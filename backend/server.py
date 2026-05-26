@@ -477,11 +477,74 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
     ai_text = ai_doc["text"] if ai_doc else None
     pdf_bytes = build_summary_pdf(data, ai_text)
     filename = f"BAIS_Summary_{rd}.pdf"
+
+    # Persist to history (generated_reports)
+    import base64 as _b64
+    counts = {k: len(data.get(k, [])) for k in ["lid", "kontra", "gal", "medmon", "geoint", "piket"]}
+    await db.generated_reports.insert_one({
+        "report_date": rd,
+        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_by": user["id"],
+        "generated_by_name": user.get("name", ""),
+        "filename": filename,
+        "size_bytes": len(pdf_bytes),
+        "pdf_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
+        "counts": counts,
+        "has_ai_summary": bool(ai_text),
+    })
+
     return StreamingResponse(
         iter([pdf_bytes]),
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+# ===================== REPORT HISTORY =====================
+@api.get("/reports/history")
+async def reports_history(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    _user: dict = Depends(get_current_user),
+):
+    q = {}
+    if start_date or end_date:
+        q["report_date"] = {}
+        if start_date:
+            q["report_date"]["$gte"] = start_date
+        if end_date:
+            q["report_date"]["$lte"] = end_date
+    cur = db.generated_reports.find(q, {"pdf_base64": 0}).sort("generated_at", -1).limit(min(limit, 500))
+    out = []
+    async for d in cur:
+        d["id"] = str(d["_id"])
+        del d["_id"]
+        out.append(d)
+    return out
+
+
+@api.get("/reports/{rid}/download")
+async def reports_download(rid: str, _user: dict = Depends(get_current_user)):
+    import base64 as _b64
+    doc = await db.generated_reports.find_one({"_id": ObjectId(rid)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
+    pdf_bytes = _b64.b64decode(doc["pdf_base64"])
+    filename = doc.get("filename") or f"BAIS_Summary_{doc.get('report_date','')}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.delete("/reports/{rid}")
+async def reports_delete(rid: str, _user: dict = Depends(require_role("admin"))):
+    res = await db.generated_reports.delete_one({"_id": ObjectId(rid)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
+    return {"ok": True}
 
 
 # ===================== STARTUP / SEEDING =====================
@@ -495,6 +558,8 @@ async def startup():
     await db.geoint_reports.create_index([("report_date", -1)])
     await db.piket_reports.create_index([("report_date", -1)])
     await db.ai_summaries.create_index("report_date", unique=True)
+    await db.generated_reports.create_index([("report_date", -1)])
+    await db.generated_reports.create_index([("generated_at", -1)])
 
     # Seed admin and test users
     seed_users = [

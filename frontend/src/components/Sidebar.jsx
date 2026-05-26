@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import {
   ShieldStar, House, Newspaper, UserFocus, Megaphone,
-  ChartLineUp, Crosshair, ClipboardText, FilePdf, SignOut, Users,
+  ChartLineUp, Crosshair, ClipboardText, FilePdf, SignOut, Users, Archive,
 } from "@phosphor-icons/react";
 import { ROLE_LABEL } from "@/lib/api";
 
@@ -41,6 +41,7 @@ export default function Sidebar() {
         <p className="overline px-2 pt-2 pb-1">Dashboard</p>
         <SideLink to="/" icon={House} label="Ringkasan Harian" testid="nav-dashboard" />
         <SideLink to="/summary" icon={FilePdf} label="Summary & PDF" testid="nav-summary" />
+        <SideLink to="/history" icon={Archive} label="Arsip Laporan" testid="nav-history" />
 
         <p className="overline px-2 pt-4 pb-1">Input Data Tim</p>
         {teamLinks.map((n) => (

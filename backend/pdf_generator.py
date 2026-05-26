@@ -1,13 +1,11 @@
-"""PDF generator for BAIS daily summary. Max 2 pages, infographic + summary text.
+"""PDF generator for BAIS daily summary. Max 2 pages.
 
-Layout rules:
-- All text wrapping uses reportlab.pdfbase.pdfmetrics.stringWidth to avoid overflow.
-- Each panel computes a cursor (cur_y) and clips items that would cross its bottom.
-- KPI strip is fixed height; values & labels don't overlap header band.
-- Page 1 = Header + KPIs + 2x2 COG panels.
-- Page 2 = Header + AI narrative (top) + 3 columns (Geoint, Medmon, Kontra).
+NEW LAYOUT (per user request):
+- Page 1 = EXECUTIVE SUMMARY (AI narrative) at the top + compact KPI strip + 4 small COG tiles.
+- Page 2 = Supporting data with uploaded images displayed.
 """
 import io
+import base64
 import re
 from datetime import datetime
 
@@ -16,11 +14,11 @@ from reportlab.lib.units import mm
 from reportlab.lib.colors import HexColor, white
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
+from reportlab.lib.utils import ImageReader
 
 PAGE_W, PAGE_H = A4
 MARGIN = 12 * mm
 
-# Brand colors
 COLOR_HEADER = HexColor("#0B1220")
 COLOR_AMBER = HexColor("#F59E0B")
 COLOR_RED = HexColor("#EF4444")
@@ -30,7 +28,8 @@ COLOR_PURPLE = HexColor("#8B5CF6")
 COLOR_TEXT = HexColor("#0F172A")
 COLOR_MUTED = HexColor("#475569")
 COLOR_BORDER = HexColor("#CBD5E1")
-COLOR_LIGHT = HexColor("#F1F5F9")
+COLOR_BORDER2 = HexColor("#E2E8F0")
+COLOR_LIGHT = HexColor("#F8FAFC")
 
 COG_COLORS = {
     "aceh": COLOR_GREEN,
@@ -39,9 +38,9 @@ COG_COLORS = {
     "internasional": COLOR_PURPLE,
 }
 
-# ---------- TEXT WRAP UTILS ----------
+
+# ---------- UTILS ----------
 def wrap_to_width(text, font_name, font_size, max_width_pt):
-    """Wrap text into lines that fit within max_width_pt (points)."""
     text = (text or "").strip()
     if not text:
         return []
@@ -58,7 +57,6 @@ def wrap_to_width(text, font_name, font_size, max_width_pt):
             else:
                 if line:
                     out.append(line)
-                # If word itself is too long, hard-split.
                 while stringWidth(w, font_name, font_size) > max_width_pt and len(w) > 4:
                     cut = len(w)
                     while cut > 4 and stringWidth(w[:cut], font_name, font_size) > max_width_pt:
@@ -72,7 +70,6 @@ def wrap_to_width(text, font_name, font_size, max_width_pt):
 
 
 def truncate_to_width(text, font_name, font_size, max_width_pt):
-    """Return text fitted on one line; truncate with ellipsis if needed."""
     text = (text or "").strip()
     if stringWidth(text, font_name, font_size) <= max_width_pt:
         return text
@@ -81,152 +78,84 @@ def truncate_to_width(text, font_name, font_size, max_width_pt):
     return text + "…" if text else ""
 
 
+def decode_image(data_url):
+    if not data_url:
+        return None
+    try:
+        s = data_url.split(",", 1)[1] if "," in data_url else data_url
+        return ImageReader(io.BytesIO(base64.b64decode(s)))
+    except Exception:
+        return None
+
+
+def fit_image(c, img, x, y, max_w, max_h):
+    """Draw image inside box (x,y) with max_w/max_h, preserving aspect ratio, centered."""
+    if not img:
+        return
+    iw, ih = img.getSize()
+    if iw <= 0 or ih <= 0:
+        return
+    ratio = min(max_w / iw, max_h / ih)
+    w, h = iw * ratio, ih * ratio
+    cx = x + (max_w - w) / 2
+    cy = y + (max_h - h) / 2
+    try:
+        c.drawImage(img, cx, cy, width=w, height=h, mask="auto", preserveAspectRatio=True)
+    except Exception:
+        pass
+
+
 # ---------- HEADER / FOOTER ----------
 def _draw_header(c, report_date):
     c.setFillColor(COLOR_HEADER)
-    c.rect(0, PAGE_H - 22 * mm, PAGE_W, 22 * mm, stroke=0, fill=1)
+    c.rect(0, PAGE_H - 18 * mm, PAGE_W, 18 * mm, stroke=0, fill=1)
     c.setFillColor(COLOR_AMBER)
-    c.rect(MARGIN, PAGE_H - 22 * mm, 4 * mm, 22 * mm, stroke=0, fill=1)
+    c.rect(MARGIN, PAGE_H - 18 * mm, 3 * mm, 18 * mm, stroke=0, fill=1)
     c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 14)
-    c.drawString(MARGIN + 7 * mm, PAGE_H - 11 * mm, "BAIS TNI — SUMMARY GEOSPASIKA HARIAN")
-    c.setFont("Helvetica", 8)
-    c.drawString(MARGIN + 7 * mm, PAGE_H - 16 * mm, "Satgas Kapuas  •  Klasifikasi: TERBATAS")
+    c.setFont("Helvetica-Bold", 12)
+    c.drawString(MARGIN + 6 * mm, PAGE_H - 9 * mm, "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
+    c.setFont("Helvetica", 7)
+    c.drawString(MARGIN + 6 * mm, PAGE_H - 13.5 * mm, "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(COLOR_AMBER)
-    c.drawRightString(PAGE_W - MARGIN, PAGE_H - 11 * mm, f"Tanggal Laporan: {report_date}")
+    c.drawRightString(PAGE_W - MARGIN, PAGE_H - 9 * mm, f"Tanggal: {report_date}")
     c.setFillColor(HexColor("#94A3B8"))
-    c.setFont("Helvetica", 7.5)
-    c.drawRightString(PAGE_W - MARGIN, PAGE_H - 16 * mm,
-                      f"Dicetak: {datetime.now().strftime('%d %b %Y %H:%M')} WIB")
+    c.setFont("Helvetica", 7)
+    c.drawRightString(PAGE_W - MARGIN, PAGE_H - 13.5 * mm,
+                      f"Dicetak {datetime.now().strftime('%d %b %Y %H:%M')} WIB")
 
 
 def _draw_footer(c, page_num, total=2):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.4)
-    c.line(MARGIN, 10 * mm, PAGE_W - MARGIN, 10 * mm)
+    c.line(MARGIN, 9 * mm, PAGE_W - MARGIN, 9 * mm)
     c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica", 7)
-    c.drawString(MARGIN, 6 * mm, "DOKUMEN INTERNAL — TIDAK UNTUK DISEBARLUASKAN")
-    c.drawRightString(PAGE_W - MARGIN, 6 * mm, f"Halaman {page_num} / {total}")
+    c.setFont("Helvetica", 6.5)
+    c.drawString(MARGIN, 5.5 * mm, "DOKUMEN INTERNAL — TIDAK UNTUK DISEBARLUASKAN")
+    c.drawRightString(PAGE_W - MARGIN, 5.5 * mm, f"Hal {page_num} / {total}")
 
 
-def _panel_title(c, x, y, w, title, kicker=None):
-    """Draw a panel title bar at the TOP of a panel. Returns y for content start (below the bar)."""
-    bar_h = 6 * mm
-    c.setFillColor(COLOR_HEADER)
+def _panel_title(c, x, y, w, title, kicker=None, color=COLOR_HEADER):
+    bar_h = 5 * mm
+    c.setFillColor(color)
     c.rect(x, y - bar_h, w, bar_h, stroke=0, fill=1)
     c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x + 2.5 * mm, y - bar_h + 1.8 * mm, title)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(x + 2 * mm, y - bar_h + 1.5 * mm, title)
     if kicker:
         c.setFillColor(COLOR_AMBER)
-        c.setFont("Helvetica-Bold", 7)
-        c.drawRightString(x + w - 2.5 * mm, y - bar_h + 1.8 * mm, kicker)
-    return y - bar_h - 1 * mm  # cursor below bar with small gap
-
-
-def _empty(c, x, y, w, label="— Tidak ada laporan —"):
-    c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica-Oblique", 7.5)
-    c.drawString(x + 3 * mm, y - 4 * mm, label)
-
-
-# ---------- KPI STRIP ----------
-def _draw_kpis(c, x, y, w, h, data):
-    # outer border
-    c.setStrokeColor(COLOR_BORDER)
-    c.setLineWidth(0.5)
-    c.rect(x, y, w, h, stroke=1, fill=0)
-    # title bar at top
-    cur_top = y + h
-    c.setFillColor(COLOR_HEADER)
-    c.rect(x, cur_top - 5 * mm, w, 5 * mm, stroke=0, fill=1)
-    c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 8.5)
-    c.drawString(x + 2.5 * mm, cur_top - 5 * mm + 1.4 * mm, "RINGKASAN STATISTIK HARIAN")
-
-    metrics = [
-        ("BERITA LID", len(data.get("lid", [])), COLOR_AMBER),
-        ("PROFILING", len(data.get("kontra", [])), COLOR_RED),
-        ("KONTEN GAL", len(data.get("gal", [])), COLOR_BLUE),
-        ("MEDMON", len(data.get("medmon", [])), COLOR_PURPLE),
-        ("POSISI OPM", len(data.get("geoint", [])), COLOR_GREEN),
-        ("PIKET", len(data.get("piket", [])), COLOR_MUTED),
-    ]
-    body_top = cur_top - 5 * mm  # below header band
-    body_h = h - 5 * mm
-    cw = w / 6
-    # value baseline
-    val_baseline = y + (body_h - 5 * mm) / 2 + y - y + 5.5 * mm  # internal calc
-    # simpler: place value and label using body region directly
-    val_y = y + body_h / 2 + 1 * mm
-    label_y = y + 3.5 * mm
-
-    for i, (label, val, col) in enumerate(metrics):
-        cx = x + i * cw
-        c.setFillColor(col)
-        c.setFont("Helvetica-Bold", 18)
-        c.drawCentredString(cx + cw / 2, val_y, str(val))
-        c.setFillColor(COLOR_MUTED)
         c.setFont("Helvetica-Bold", 6.5)
-        c.drawCentredString(cx + cw / 2, label_y, label)
-        if i < 5:
-            c.setStrokeColor(COLOR_BORDER)
-            c.setLineWidth(0.3)
-            c.line(cx + cw, y + 2 * mm, cx + cw, body_top - 1 * mm)
+        c.drawRightString(x + w - 2 * mm, y - bar_h + 1.5 * mm, kicker)
+    return y - bar_h - 1 * mm
 
 
-# ---------- COG PANEL ----------
-def _cog_panel(c, x, y, w, h, cog, items):
-    color = COG_COLORS.get(cog, COLOR_AMBER)
-    c.setStrokeColor(COLOR_BORDER)
-    c.setLineWidth(0.5)
-    c.rect(x, y, w, h, stroke=1, fill=0)
-    # colored top tab
-    tab_h = 6 * mm
-    c.setFillColor(color)
-    c.rect(x, y + h - tab_h, w, tab_h, stroke=0, fill=1)
-    c.setFillColor(white)
-    c.setFont("Helvetica-Bold", 9)
-    c.drawString(x + 2.5 * mm, y + h - tab_h + 1.8 * mm, f"COG · {cog.upper()}")
-    c.setFont("Helvetica-Bold", 7)
-    c.drawRightString(x + w - 2.5 * mm, y + h - tab_h + 1.8 * mm, f"{len(items)} ITEM")
-
-    inner_w = w - 5 * mm
-    cur_y = y + h - tab_h - 4 * mm
-    if not items:
-        _empty(c, x, cur_y + 4 * mm, w)
-        return
-
-    # show up to 3 items, each capped to ~3 lines
-    for it in items[:3]:
-        if cur_y < y + 4 * mm:
-            break
-        # bullet & title
-        c.setFillColor(color)
-        c.circle(x + 3 * mm, cur_y - 1.2 * mm, 0.8 * mm, stroke=0, fill=1)
-        c.setFillColor(COLOR_TEXT)
-        c.setFont("Helvetica-Bold", 7.8)
-        title_lines = wrap_to_width(it.get("judul", "—"), "Helvetica-Bold", 7.8, inner_w)
-        # title max 2 lines
-        for line in title_lines[:2]:
-            if cur_y < y + 4 * mm:
-                break
-            c.drawString(x + 5 * mm, cur_y - 1.2 * mm, line)
-            cur_y -= 3.2 * mm
-        # analisa max 2 lines
-        c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 7)
-        for line in wrap_to_width(it.get("analisa", ""), "Helvetica", 7, inner_w)[:2]:
-            if cur_y < y + 4 * mm:
-                break
-            c.drawString(x + 5 * mm, cur_y - 1.2 * mm, line)
-            cur_y -= 2.9 * mm
-        cur_y -= 1.5 * mm  # spacing between items
+def _empty(c, x, y, label="— Tidak ada laporan —"):
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Oblique", 6.5)
+    c.drawString(x + 2.5 * mm, y - 3.5 * mm, label)
 
 
-# ---------- AI SUMMARY ----------
+# ---------- EXECUTIVE SUMMARY (PAGE 1 - BIG) ----------
 HEADING_RE = re.compile(
     r"^(RINGKASAN\b|ANALISA\b|REKOMENDASI\b|ANALISA\s*&\s*REKOMENDASI\b|"
     r"\d+\.\s*(?:ACEH|JAKARTA|PAPUA|INTERNASIONAL)\b)",
@@ -234,46 +163,47 @@ HEADING_RE = re.compile(
 )
 
 
-def _draw_summary_text(c, x, y, w, h, ai_text, data):
+def _draw_executive_summary(c, x, y, w, h, ai_text, data):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cur_y = _panel_title(c, x, y + h, w, "RINGKASAN NARATIF AI (CLAUDE SONNET 4.5)",
-                         kicker="EXECUTIVE SUMMARY")
+    cur_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN",
+                         kicker="AI · CLAUDE SONNET 4.5")
 
     text = ai_text or _fallback_summary(data)
-    # strip markdown
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
 
-    inner_w = w - 8 * mm  # 4mm padding each side
-    bottom = y + 3 * mm
+    inner_w = w - 7 * mm
+    bottom = y + 2 * mm
 
     for paragraph in text.split("\n"):
         if cur_y < bottom + 3 * mm:
             break
         if not paragraph.strip():
-            cur_y -= 2 * mm
+            cur_y -= 1.2 * mm  # tighter blank line
             continue
         is_heading = bool(HEADING_RE.match(paragraph.strip()))
         if is_heading:
-            c.setFont("Helvetica-Bold", 8.5)
+            font_name, font_size, line_h = "Helvetica-Bold", 8.2, 3.2 * mm
             c.setFillColor(COLOR_HEADER)
-            font_name, font_size, line_h = "Helvetica-Bold", 8.5, 3.6 * mm
         else:
-            c.setFont("Helvetica", 8)
+            font_name, font_size, line_h = "Helvetica", 8, 3.0 * mm
             c.setFillColor(COLOR_TEXT)
-            font_name, font_size, line_h = "Helvetica", 8, 3.4 * mm
+        c.setFont(font_name, font_size)
         for line in wrap_to_width(paragraph.strip(), font_name, font_size, inner_w):
             if cur_y < bottom + 2 * mm:
                 break
-            c.drawString(x + 4 * mm, cur_y - line_h + 1 * mm, line)
+            c.drawString(x + 3.5 * mm, cur_y - line_h + 0.8 * mm, line)
             cur_y -= line_h
-        cur_y -= 0.8 * mm
+        # tiny gap between paragraphs
+        cur_y -= 0.3 * mm
 
 
 def _fallback_summary(data):
-    parts = ["RINGKASAN EKSEKUTIF:", "Laporan harian berdasarkan input dari tim operasional.", ""]
+    parts = ["RINGKASAN EKSEKUTIF:",
+             "Laporan harian berdasarkan input seluruh tim operasional.",
+             ""]
     by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
     for it in data.get("lid", []):
         by_cog.setdefault(it.get("cog", ""), []).append(it)
@@ -283,146 +213,414 @@ def _fallback_summary(data):
         items = by_cog.get(cog_key, [])
         if items:
             for it in items[:2]:
-                analisa = (it.get("analisa", "") or "")[:150]
-                parts.append(f"- {it.get('judul','')} — {analisa}")
+                parts.append(f"- {it.get('judul','')} — {(it.get('analisa','') or '')[:120]}")
         else:
             parts.append("- Tidak ada laporan signifikan.")
-        parts.append("")
+    parts.append("")
     parts.append("ANALISA & REKOMENDASI:")
-    parts.append(f"- Total {len(data.get('lid', []))} berita trending, "
+    parts.append(f"- Total {len(data.get('lid', []))} berita, "
                  f"{len(data.get('kontra', []))} profiling, "
-                 f"{len(data.get('geoint', []))} posisi OPM termonitor.")
+                 f"{len(data.get('geoint', []))} posisi OPM, "
+                 f"{len(data.get('medmon', []))} medmon, "
+                 f"{len(data.get('gal', []))} konten galang.")
     parts.append("- Tindak lanjuti rekomendasi tim sesuai prioritas pimpinan.")
     return "\n".join(parts)
 
 
-# ---------- LOWER 3-COLUMN SECTIONS ----------
-def _draw_geoint(c, x, y, w, h, data):
+# ---------- KPI STRIP (compact) ----------
+def _draw_kpis(c, x, y, w, h, data):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cur_y = _panel_title(c, x, y + h, w, "GEOINT · POSISI OPM", kicker=f"{len(data.get('geoint', []))} TITIK")
-
-    items = data.get("geoint", [])
-    bottom = y + 3 * mm
-    if not items:
-        _empty(c, x, cur_y, w)
-        return
-
-    inner_w = w - 5 * mm
-
-    for it in items[:5]:
-        if cur_y < bottom + 6 * mm:
-            break
-        # row block: wilayah + status badge
-        c.setFillColor(COLOR_TEXT)
-        c.setFont("Helvetica-Bold", 7.5)
-        wilayah = truncate_to_width(it.get("wilayah", "—"), "Helvetica-Bold", 7.5, inner_w * 0.6)
-        c.drawString(x + 3 * mm, cur_y - 2.6 * mm, wilayah)
-        status = (it.get("status") or "").upper().replace("_", " ")
-        c.setFont("Helvetica-Bold", 6.5)
-        c.setFillColor(COLOR_RED if it.get("status") == "aktif" else COLOR_GREEN)
-        c.drawRightString(x + w - 3 * mm, cur_y - 2.6 * mm, status)
-        cur_y -= 3.6 * mm
-        # name + coords (mono)
+    metrics = [
+        ("LID", len(data.get("lid", [])), COLOR_AMBER),
+        ("KONTRA", len(data.get("kontra", [])), COLOR_RED),
+        ("GAL", len(data.get("gal", [])), COLOR_BLUE),
+        ("MEDMON", len(data.get("medmon", [])), COLOR_PURPLE),
+        ("GEOINT", len(data.get("geoint", [])), COLOR_GREEN),
+        ("PIKET", len(data.get("piket", [])), COLOR_MUTED),
+    ]
+    cw = w / 6
+    val_y = y + h - 6 * mm
+    label_y = y + 2 * mm
+    for i, (label, val, col) in enumerate(metrics):
+        cx = x + i * cw
+        c.setFillColor(col)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(cx + cw / 2, val_y, str(val))
         c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 6.8)
-        nm = truncate_to_width(it.get("nama_orang", "-"), "Helvetica", 6.8, inner_w)
-        c.drawString(x + 3 * mm, cur_y - 2.4 * mm, nm)
-        cur_y -= 3 * mm
-        c.setFont("Courier", 6.5)
-        coords = f"{it.get('lat','-')}, {it.get('lon','-')}"
-        coords = truncate_to_width(coords, "Courier", 6.5, inner_w)
-        c.drawString(x + 3 * mm, cur_y - 2.4 * mm, coords)
-        cur_y -= 4 * mm
-        # divider
-        c.setStrokeColor(COLOR_BORDER)
-        c.setLineWidth(0.2)
-        c.line(x + 2 * mm, cur_y, x + w - 2 * mm, cur_y)
-        cur_y -= 1.5 * mm
+        c.setFont("Helvetica-Bold", 6)
+        c.drawCentredString(cx + cw / 2, label_y, label)
+        if i < 5:
+            c.setStrokeColor(COLOR_BORDER2)
+            c.setLineWidth(0.3)
+            c.line(cx + cw, y + 1.5 * mm, cx + cw, y + h - 1.5 * mm)
 
 
-def _draw_medmon(c, x, y, w, h, data):
+# ---------- COG MINI TILES (compact) ----------
+def _draw_cog_mini(c, x, y, w, h, cog, items):
+    color = COG_COLORS.get(cog, COLOR_AMBER)
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cur_y = _panel_title(c, x, y + h, w, "MEDIA MONITORING", kicker=f"{len(data.get('medmon', []))} SUBJEK")
-
-    items = data.get("medmon", [])
-    bottom = y + 3 * mm
-    if not items:
-        _empty(c, x, cur_y, w)
-        return
+    # left color stripe
+    c.setFillColor(color)
+    c.rect(x, y, 2 * mm, h, stroke=0, fill=1)
+    # title
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 7.5)
+    c.drawString(x + 3.5 * mm, y + h - 4 * mm, cog.upper())
+    c.setFillColor(color)
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawRightString(x + w - 2 * mm, y + h - 4 * mm, f"{len(items)} ITEM")
 
     inner_w = w - 5 * mm
-
-    for it in items[:4]:
-        if cur_y < bottom + 8 * mm:
+    cur_y = y + h - 7 * mm
+    if not items:
+        _empty(c, x + 1 * mm, cur_y + 4 * mm, "— Tidak ada —")
+        return
+    for it in items[:2]:
+        if cur_y < y + 3 * mm:
             break
-        # subjek
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica-Bold", 6.8)
+        for line in wrap_to_width(it.get("judul", "—"), "Helvetica-Bold", 6.8, inner_w)[:2]:
+            if cur_y < y + 3 * mm:
+                break
+            c.drawString(x + 3.5 * mm, cur_y - 2 * mm, line)
+            cur_y -= 2.6 * mm
+        cur_y -= 0.5 * mm
+
+
+# ---------- PAGE 2: SUPPORTING DATA WITH IMAGES ----------
+def _section_header(c, x, y, w, text, count_text=None, color=COLOR_HEADER):
+    bar_h = 4.5 * mm
+    c.setFillColor(color)
+    c.rect(x, y - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 7)
+    c.drawString(x + 2 * mm, y - bar_h + 1.3 * mm, text)
+    if count_text:
+        c.setFont("Helvetica-Bold", 6.5)
+        c.setFillColor(COLOR_AMBER)
+        c.drawRightString(x + w - 2 * mm, y - bar_h + 1.3 * mm, count_text)
+    return y - bar_h
+
+
+def _draw_lid_strip(c, x, y, w, h, data):
+    """LID with thumbnail of sentiment image."""
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+    cy = _section_header(c, x, y + h, w, "BERITA TRENDING (TIM LID)",
+                         f"{len(data.get('lid', []))} ITEM")
+
+    items = data.get("lid", [])
+    if not items:
+        _empty(c, x, cy - 1 * mm, "Tidak ada berita.")
+        return
+
+    # 4 mini cards horizontal (Aceh, Jakarta, Papua, Internasional)
+    by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
+    for it in items:
+        by_cog.setdefault(it.get("cog", ""), []).append(it)
+
+    bottom = y + 2 * mm
+    body_h = cy - bottom
+    col_w = (w - 6 * mm) / 4
+
+    for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
+        col_x = x + 1.5 * mm + i * (col_w + 0.5 * mm)
+        color = COG_COLORS[cog]
+        # COG badge
+        c.setFillColor(color)
+        c.rect(col_x, cy - 4 * mm, col_w, 3 * mm, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(col_x + 1 * mm, cy - 4 * mm + 0.9 * mm, cog.upper())
+        # take first item only (most important news)
+        it = (by_cog.get(cog) or [{}])[0]
+        if not it:
+            continue
+        # title (2 lines)
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica-Bold", 6.5)
+        title_y = cy - 6.5 * mm
+        for line in wrap_to_width(it.get("judul", "—"), "Helvetica-Bold", 6.5, col_w - 1 * mm)[:2]:
+            c.drawString(col_x + 0.5 * mm, title_y, line)
+            title_y -= 2.5 * mm
+        # sentiment image area (if any)
+        img_top = title_y - 1 * mm
+        img_h = max(8 * mm, img_top - bottom - 1 * mm)
+        if it.get("sentiment_image"):
+            img = decode_image(it["sentiment_image"])
+            if img:
+                fit_image(c, img, col_x + 0.5 * mm, bottom, col_w - 1 * mm, img_h)
+
+
+def _draw_medmon_with_images(c, x, y, w, h, data):
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+    cy = _section_header(c, x, y + h, w, "MEDIA MONITORING",
+                         f"{len(data.get('medmon', []))} SUBJEK")
+    items = data.get("medmon", [])
+    if not items:
+        _empty(c, x, cy - 1 * mm)
+        return
+    bottom = y + 2 * mm
+    body_h = cy - bottom
+
+    # Show up to 3 items as rows: [name+stats text col] | [pie chart] | [chart sumber]
+    rows = items[:3]
+    row_h = (body_h - 1 * mm) / max(1, len(rows))
+    for i, it in enumerate(rows):
+        ry = cy - 1 * mm - (i + 1) * row_h
+        # subject name
         c.setFillColor(COLOR_HEADER)
-        c.setFont("Helvetica-Bold", 8)
-        subj = truncate_to_width(str(it.get("subjek", "-")).upper(),
-                                 "Helvetica-Bold", 8, inner_w * 0.65)
-        c.drawString(x + 3 * mm, cur_y - 2.8 * mm, subj)
-        # sentiment counts (right)
+        c.setFont("Helvetica-Bold", 7.5)
+        subj = truncate_to_width(str(it.get("subjek", "-")).upper(), "Helvetica-Bold", 7.5, w * 0.35)
+        c.drawString(x + 2 * mm, ry + row_h - 3 * mm, subj)
+        # sentiment chips
         positifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "positif")
         negatifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "negatif")
-        c.setFont("Helvetica-Bold", 7.5)
+        c.setFont("Helvetica-Bold", 6.5)
         c.setFillColor(COLOR_GREEN)
-        c.drawRightString(x + w - 9 * mm, cur_y - 2.8 * mm, f"+{positifs}")
+        c.drawString(x + 2 * mm, ry + row_h - 6 * mm, f"+{positifs} positif")
         c.setFillColor(COLOR_RED)
-        c.drawRightString(x + w - 3 * mm, cur_y - 2.8 * mm, f"−{negatifs}")
-        cur_y -= 3.8 * mm
-        # analisa wrapped
+        c.drawString(x + 18 * mm, ry + row_h - 6 * mm, f"−{negatifs} negatif")
+        # analisa
         c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 6.8)
-        for line in wrap_to_width(it.get("analisa", ""), "Helvetica", 6.8, inner_w)[:3]:
-            if cur_y < bottom + 2 * mm:
-                break
-            c.drawString(x + 3 * mm, cur_y - 2.2 * mm, line)
-            cur_y -= 2.9 * mm
-        cur_y -= 1.5 * mm
+        c.setFont("Helvetica", 6)
+        text_col_w = w * 0.42 - 2 * mm
+        line_y = ry + row_h - 9 * mm
+        for ln in wrap_to_width(it.get("analisa", ""), "Helvetica", 6, text_col_w)[:3]:
+            c.drawString(x + 2 * mm, line_y, ln)
+            line_y -= 2.3 * mm
+        # pie chart image
+        img_w = w * 0.27
+        pie_x = x + w * 0.43
+        img = decode_image(it.get("pie_sentiment_image"))
+        c.setFont("Helvetica", 5.5)
+        c.setFillColor(COLOR_MUTED)
+        c.drawString(pie_x, ry + row_h - 3 * mm, "PIE SENTIMENT")
+        if img:
+            fit_image(c, img, pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 4 * mm)
+        else:
+            c.setFillColor(COLOR_LIGHT)
+            c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 4 * mm, stroke=0, fill=1)
+        # chart sumber
+        chart_x = x + w * 0.7
+        img2 = decode_image(it.get("chart_sumber_image"))
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica", 5.5)
+        c.drawString(chart_x, ry + row_h - 3 * mm, "CHART SUMBER")
+        if img2:
+            fit_image(c, img2, chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 4 * mm)
+        else:
+            c.setFillColor(COLOR_LIGHT)
+            c.rect(chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 4 * mm, stroke=0, fill=1)
+        # divider
+        if i < len(rows) - 1:
+            c.setStrokeColor(COLOR_BORDER2)
+            c.setLineWidth(0.3)
+            c.line(x + 1 * mm, ry, x + w - 1 * mm, ry)
 
 
-def _draw_kontra(c, x, y, w, h, data):
+def _draw_geoint_with_map(c, x, y, w, h, data):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cur_y = _panel_title(c, x, y + h, w, "KONTRA · PROFILING TO", kicker=f"{len(data.get('kontra', []))} TO")
-
-    items = data.get("kontra", [])
-    bottom = y + 3 * mm
+    cy = _section_header(c, x, y + h, w, "GEOINT · POSISI OPM",
+                         f"{len(data.get('geoint', []))} TITIK")
+    items = data.get("geoint", [])
     if not items:
-        _empty(c, x, cur_y, w)
+        _empty(c, x, cy - 1 * mm)
         return
+    bottom = y + 2 * mm
+    body_h = cy - bottom
 
-    inner_w = w - 5 * mm
+    # left: compact table; right: map image of first item (if any)
+    tbl_w = w * 0.55
+    img_w = w * 0.45
 
-    for it in items[:4]:
-        if cur_y < bottom + 8 * mm:
+    # table
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Bold", 5.5)
+    c.drawString(x + 2 * mm, cy - 3 * mm, "WILAYAH")
+    c.drawString(x + 22 * mm, cy - 3 * mm, "NAMA")
+    c.drawString(x + tbl_w - 18 * mm, cy - 3 * mm, "STATUS")
+    c.drawString(x + tbl_w - 6 * mm, cy - 3 * mm, "")
+    line_y = cy - 5 * mm
+    c.setStrokeColor(COLOR_BORDER2)
+    c.line(x + 1 * mm, line_y, x + tbl_w - 1 * mm, line_y)
+
+    cur_y = line_y - 2.5 * mm
+    c.setFont("Helvetica", 6.2)
+    for it in items[:8]:
+        if cur_y < bottom + 1 * mm:
             break
-        c.setFillColor(COLOR_HEADER)
-        c.setFont("Helvetica-Bold", 7.8)
-        name = truncate_to_width(it.get("nama_to", "-"), "Helvetica-Bold", 7.8, inner_w * 0.65)
-        c.drawString(x + 3 * mm, cur_y - 2.6 * mm, name)
-        # tag
-        is_satgas = it.get("sumber") == "to_satgas"
-        c.setFont("Helvetica-Bold", 6)
-        c.setFillColor(COLOR_RED if is_satgas else COLOR_BLUE)
-        tag = "TO SATGAS" if is_satgas else "TO INTERNAL"
-        c.drawRightString(x + w - 3 * mm, cur_y - 2.6 * mm, tag)
-        cur_y -= 3.6 * mm
-        # description (data_diri or keterangan)
+        c.setFillColor(COLOR_TEXT)
+        c.drawString(x + 2 * mm, cur_y, truncate_to_width(str(it.get("wilayah", "-")), "Helvetica", 6.2, 18 * mm))
+        c.drawString(x + 22 * mm, cur_y, truncate_to_width(str(it.get("nama_orang", "-")), "Helvetica", 6.2, tbl_w - 22 * mm - 20 * mm))
+        is_aktif = it.get("status") == "aktif"
+        c.setFillColor(COLOR_RED if is_aktif else COLOR_GREEN)
+        c.setFont("Helvetica-Bold", 5.8)
+        c.drawString(x + tbl_w - 18 * mm, cur_y, "AKTIF" if is_aktif else "NON-AKTIF")
+        c.setFont("Helvetica", 6.2)
+        cur_y -= 2.8 * mm
+
+    # map image (first item with peta_image, else first item)
+    map_img = None
+    for it in items:
+        if it.get("peta_image"):
+            map_img = decode_image(it["peta_image"])
+            break
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica", 5.5)
+    c.drawString(x + tbl_w + 2 * mm, cy - 3 * mm, "PETA SEBARAN")
+    if map_img:
+        fit_image(c, map_img, x + tbl_w + 2 * mm, bottom + 1 * mm, img_w - 3 * mm, body_h - 6 * mm)
+    else:
+        c.setFillColor(COLOR_LIGHT)
+        c.rect(x + tbl_w + 2 * mm, bottom + 1 * mm, img_w - 3 * mm, body_h - 6 * mm, stroke=0, fill=1)
         c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 6.8)
-        descr = it.get("keterangan") or it.get("data_diri") or ""
-        for line in wrap_to_width(descr, "Helvetica", 6.8, inner_w)[:3]:
+        c.setFont("Helvetica-Oblique", 6)
+        c.drawCentredString(x + tbl_w + img_w / 2, bottom + body_h / 2,
+                            "(belum ada gambar peta)")
+
+
+def _draw_kontra_with_images(c, x, y, w, h, data):
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+    cy = _section_header(c, x, y + h, w, "KONTRA · PROFILING TO",
+                         f"{len(data.get('kontra', []))} TO")
+    items = data.get("kontra", [])
+    if not items:
+        _empty(c, x, cy - 1 * mm)
+        return
+    bottom = y + 2 * mm
+    body_h = cy - bottom
+    rows = items[:3]
+    row_h = (body_h - 1 * mm) / max(1, len(rows))
+
+    for i, it in enumerate(rows):
+        ry = cy - 1 * mm - (i + 1) * row_h
+        # name + tag
+        c.setFillColor(COLOR_HEADER)
+        c.setFont("Helvetica-Bold", 7)
+        name = truncate_to_width(it.get("nama_to", "-"), "Helvetica-Bold", 7, w * 0.5)
+        c.drawString(x + 2 * mm, ry + row_h - 3 * mm, name)
+        is_satgas = it.get("sumber") == "to_satgas"
+        c.setFont("Helvetica-Bold", 5.5)
+        c.setFillColor(COLOR_RED if is_satgas else COLOR_BLUE)
+        c.drawRightString(x + w * 0.6, ry + row_h - 3 * mm, "TO SATGAS" if is_satgas else "TO INTERNAL")
+        # description
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica", 6)
+        ket = it.get("keterangan") or it.get("data_diri") or ""
+        line_y = ry + row_h - 5.5 * mm
+        for ln in wrap_to_width(ket, "Helvetica", 6, w * 0.6 - 2 * mm)[:3]:
+            c.drawString(x + 2 * mm, line_y, ln)
+            line_y -= 2.3 * mm
+        # SNA image (right)
+        sna_w = w * 0.18
+        sna_x = x + w * 0.62
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica", 5)
+        c.drawString(sna_x, ry + row_h - 3 * mm, "SNA")
+        img_sna = decode_image(it.get("sna_image"))
+        if img_sna:
+            fit_image(c, img_sna, sna_x, ry + 0.5 * mm, sna_w - 1 * mm, row_h - 4 * mm)
+        # Lainnya image (further right)
+        ln_x = x + w * 0.8
+        c.drawString(ln_x, ry + row_h - 3 * mm, "LAINNYA")
+        img_ln = decode_image(it.get("lainnya_image"))
+        if img_ln:
+            fit_image(c, img_ln, ln_x, ry + 0.5 * mm, w * 0.18 - 1 * mm, row_h - 4 * mm)
+        if i < len(rows) - 1:
+            c.setStrokeColor(COLOR_BORDER2)
+            c.setLineWidth(0.3)
+            c.line(x + 1 * mm, ry, x + w - 1 * mm, ry)
+
+
+def _draw_gal_piket(c, x, y, w, h, data):
+    """Combined GAL (with thumbnails) + PIKET notes."""
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x, y, w, h, stroke=1, fill=0)
+    cy = _section_header(c, x, y + h, w, "GAL · KONTEN GALANG / PIKET",
+                         f"GAL {len(data.get('gal', []))} · PIKET {len(data.get('piket', []))}")
+    bottom = y + 2 * mm
+    body_h = cy - bottom
+
+    # split horizontally: left 60% GAL with thumbnails, right 40% PIKET text
+    left_w = w * 0.6
+    right_x = x + left_w + 1 * mm
+
+    # GAL section
+    items = data.get("gal", [])[:3]
+    if items:
+        thumb_w = (left_w - 4 * mm) / 3
+        thumb_h = body_h - 6 * mm
+        for i, it in enumerate(items):
+            tx = x + 1 * mm + i * (thumb_w + 1 * mm)
+            ty = bottom + 1 * mm
+            # frame
+            c.setFillColor(COLOR_LIGHT)
+            c.rect(tx, ty, thumb_w, thumb_h, stroke=0, fill=1)
+            img = decode_image(it.get("gambar"))
+            if img:
+                fit_image(c, img, tx, ty + 5 * mm, thumb_w, thumb_h - 7 * mm)
+            # category badge
+            cat = (it.get("kategori") or "").upper()
+            cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
+            c.setFillColor(cat_color)
+            c.rect(tx, ty + thumb_h - 3 * mm, thumb_w, 3 * mm, stroke=0, fill=1)
+            c.setFillColor(white)
+            c.setFont("Helvetica-Bold", 5.5)
+            c.drawString(tx + 1 * mm, ty + thumb_h - 3 * mm + 0.8 * mm, cat)
+            # title
+            c.setFillColor(COLOR_TEXT)
+            c.setFont("Helvetica-Bold", 5.8)
+            judul = truncate_to_width(it.get("judul", "-"), "Helvetica-Bold", 5.8, thumb_w - 1 * mm)
+            c.drawString(tx + 0.5 * mm, ty + 2 * mm, judul)
+    else:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 6.5)
+        c.drawString(x + 2 * mm, cy - 5 * mm, "Tidak ada konten GAL.")
+
+    # PIKET section (right)
+    c.setStrokeColor(COLOR_BORDER2)
+    c.setLineWidth(0.3)
+    c.line(right_x - 1 * mm, cy - 1 * mm, right_x - 1 * mm, bottom + 1 * mm)
+
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(right_x, cy - 3 * mm, "PIKET · SATGAS TEK / SANDI / MEDIS")
+
+    piket_items = data.get("piket", [])[:4]
+    cur_y = cy - 6 * mm
+    if not piket_items:
+        c.setFont("Helvetica-Oblique", 6)
+        c.drawString(right_x, cur_y, "Tidak ada laporan piket.")
+    else:
+        SATGAS_COLORS = {"tek": COLOR_BLUE, "sandi": COLOR_PURPLE, "medis": COLOR_GREEN}
+        for it in piket_items:
             if cur_y < bottom + 2 * mm:
                 break
-            c.drawString(x + 3 * mm, cur_y - 2.2 * mm, line)
-            cur_y -= 2.9 * mm
-        cur_y -= 1.5 * mm
+            c.setFillColor(SATGAS_COLORS.get(it.get("satgas"), COLOR_MUTED))
+            c.setFont("Helvetica-Bold", 5.8)
+            c.drawString(right_x, cur_y, f"[{(it.get('satgas') or '').upper()}] " +
+                         truncate_to_width(it.get("judul", "-"), "Helvetica-Bold", 5.8, w - left_w - 8 * mm))
+            cur_y -= 2.6 * mm
+            c.setFillColor(COLOR_TEXT)
+            c.setFont("Helvetica", 5.8)
+            for ln in wrap_to_width(it.get("isi", ""), "Helvetica", 5.8, w - left_w - 4 * mm)[:2]:
+                c.drawString(right_x, cur_y, ln)
+                cur_y -= 2.4 * mm
+            cur_y -= 1 * mm
 
 
 # ---------- MAIN ----------
@@ -434,52 +632,62 @@ def build_summary_pdf(data, ai_text):
     # =========== PAGE 1 ===========
     _draw_header(c, rd)
 
-    # KPI strip
-    kpi_h = 26 * mm
-    kpi_y = PAGE_H - 22 * mm - 5 * mm - kpi_h
-    _draw_kpis(c, MARGIN, kpi_y, PAGE_W - 2 * MARGIN, kpi_h, data)
+    # Big AI Summary block (top, takes ~75% of body)
+    body_top = PAGE_H - 18 * mm - 4 * mm
+    body_bottom = 13 * mm
 
-    # 4 COG panels (2x2 grid)
-    grid_top = kpi_y - 5 * mm
-    grid_bottom = 14 * mm
-    grid_h = grid_top - grid_bottom
+    # KPI strip (small, at the bottom right above footer)
+    kpi_h = 14 * mm
+    kpi_y = body_bottom + 0
+    cog_h = 26 * mm
+    cog_y = kpi_y + kpi_h + 3 * mm
+
+    sum_top = body_top
+    sum_bottom = cog_y + cog_h + 3 * mm
+    sum_h = sum_top - sum_bottom
+    _draw_executive_summary(c, MARGIN, sum_bottom, PAGE_W - 2 * MARGIN, sum_h, ai_text, data)
+
+    # 4 mini COG tiles row
     grid_w = PAGE_W - 2 * MARGIN
-    gutter = 4 * mm
-    cell_w = (grid_w - gutter) / 2
-    cell_h = (grid_h - gutter) / 2
-
+    gutter = 3 * mm
+    cog_w = (grid_w - 3 * gutter) / 4
     by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
     for it in data.get("lid", []):
         by_cog.setdefault(it.get("cog", ""), []).append(it)
+    for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
+        cx = MARGIN + i * (cog_w + gutter)
+        _draw_cog_mini(c, cx, cog_y, cog_w, cog_h, cog, by_cog.get(cog, []))
 
-    positions = [
-        ("aceh", MARGIN, grid_top - cell_h),
-        ("jakarta", MARGIN + cell_w + gutter, grid_top - cell_h),
-        ("papua", MARGIN, grid_top - cell_h * 2 - gutter),
-        ("internasional", MARGIN + cell_w + gutter, grid_top - cell_h * 2 - gutter),
-    ]
-    for cog, px, py in positions:
-        _cog_panel(c, px, py, cell_w, cell_h, cog, by_cog.get(cog, []))
+    # KPI strip
+    _draw_kpis(c, MARGIN, kpi_y, PAGE_W - 2 * MARGIN, kpi_h, data)
 
     _draw_footer(c, 1)
     c.showPage()
 
     # =========== PAGE 2 ===========
     _draw_header(c, rd)
-    # AI narrative top block
-    sum_h = 95 * mm
-    sum_y = PAGE_H - 22 * mm - 5 * mm - sum_h
-    _draw_summary_text(c, MARGIN, sum_y, PAGE_W - 2 * MARGIN, sum_h, ai_text, data)
+    avail_top = PAGE_H - 18 * mm - 4 * mm
+    avail_bottom = 13 * mm
+    avail_h = avail_top - avail_bottom
 
-    # bottom: 3 columns (Geoint, Medmon, Kontra)
-    bottom_top = sum_y - 5 * mm
-    bottom_bottom = 14 * mm
-    bottom_h = bottom_top - bottom_bottom
-    total_w = PAGE_W - 2 * MARGIN
-    col_w = (total_w - 2 * gutter) / 3
-    _draw_geoint(c, MARGIN, bottom_bottom, col_w, bottom_h, data)
-    _draw_medmon(c, MARGIN + col_w + gutter, bottom_bottom, col_w, bottom_h, data)
-    _draw_kontra(c, MARGIN + 2 * (col_w + gutter), bottom_bottom, col_w, bottom_h, data)
+    # 4 vertical sections stacked, each ~25% of available height
+    section_gap = 2 * mm
+    section_h = (avail_h - 3 * section_gap) / 4
+    w = PAGE_W - 2 * MARGIN
+
+    # 1. LID strip
+    _draw_lid_strip(c, MARGIN, avail_top - section_h, w, section_h, data)
+    # 2. MEDMON with images
+    y2 = avail_top - 2 * section_h - section_gap
+    _draw_medmon_with_images(c, MARGIN, y2, w, section_h, data)
+    # 3. GEOINT with map
+    y3 = avail_top - 3 * section_h - 2 * section_gap
+    _draw_geoint_with_map(c, MARGIN, y3, w, section_h, data)
+    # 4. KONTRA + GAL/PIKET (split row)
+    y4 = avail_bottom
+    half = (w - section_gap) / 2
+    _draw_kontra_with_images(c, MARGIN, y4, half, section_h, data)
+    _draw_gal_piket(c, MARGIN + half + section_gap, y4, half, section_h, data)
 
     _draw_footer(c, 2)
     c.showPage()

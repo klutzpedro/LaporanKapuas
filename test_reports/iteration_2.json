@@ -1,0 +1,39 @@
+{
+  "summary": "Iteration 2 backend testing for BAIS Summary Geospasika. 10 NEW tests (PDF persistence + reports history/download/delete + AI system prompt content check) + 29 regression tests = 39/39 PASS. New endpoints /api/reports/history, /api/reports/{id}/download, /api/reports/{id} DELETE all functioning correctly. PDF persistence to db.generated_reports verified (record created on each /api/pdf call, pdf_base64 stored but NOT exposed in /history list). Page count <=2 verified via pypdf. Admin/non-admin role checks correct (tim_lid gets 403 on DELETE and /api/pdf). AI summary endpoint now functional again (Emergent LLM budget restored) — generated a real multi-team summary on yesterday's data.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/reports/{rid}/download", "issue": "Currently allows ANY authenticated user (get_current_user) to download any historical PDF. Consider restricting to admin/piket only, matching /api/pdf generation permissions."},
+      {"endpoint": "GET /api/reports/history", "issue": "Same — any authenticated user can list all historical reports across all dates. Consider role-gating (admin/piket) or at least filtering by generated_by for non-admin users."},
+      {"endpoint": "Mongo ObjectId validation", "issue": "/api/reports/{rid}/download and DELETE will raise InvalidId (500-class) if rid is not a valid 24-char hex. Wrap ObjectId(rid) in try/except and return 404 instead."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_reports_history.py",
+    "/app/backend/tests/test_bais_backend.py",
+    "/app/test_reports/pytest/iteration2_results.xml",
+    "/app/test_reports/pytest/iteration2_regression.xml"
+  ],
+  "action_items": [
+    "(Optional, recommended) Role-gate /api/reports/history and /api/reports/{id}/download to admin/piket only — currently any authenticated user can list and download any historical PDF.",
+    "(Optional) Wrap ObjectId(rid) in try/except in /api/reports/{id}/download and DELETE to return 404 on malformed ids instead of leaking a 500."
+  ],
+  "critical_code_review_comments": [
+    "PDF persistence (server.py:484-494) writes pdf_base64 + counts + has_ai_summary on every generation; correctly excludes pdf_base64 from the /history list via projection {pdf_base64: 0}.",
+    "/api/reports/{rid}/download (server.py:528) uses get_current_user only — broader access than /api/pdf which requires admin/piket. Inconsistent and a mild data-exposure risk.",
+    "ai_summary.py SYSTEM_PROMPT (line 12-22) and user template (line 28+) correctly enumerate all 6 teams (LID/KONTRA/GAL/MEDMON/GEOINT/PIKET) plus REKOMENDASI section — meets requirement.",
+    "PDF page-count: confirmed <=2 pages via pypdf on yesterday's generated PDF.",
+    "generated_reports indexes created in startup() on report_date and generated_at — good for /history query performance.",
+    "No size limit on the saved pdf_base64 blob; for high-volume usage consider GridFS or filesystem store instead of inline base64 in Mongo (current blob size ~few KB, but could grow with embedded images)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_reports_history.py (new)"
+  ],
+  "success_rate": {"backend": "100% (39/39)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "admin@bais.tni.mil.id/Bais2026!, piket@bais.tni.mil.id/Piket2026!, lid@bais.tni.mil.id/Lid2026! — all working.",
+  "seed_data_creation": "Tests created and immediately deleted a generated_reports record for YESTERDAY. Regression tests also created TEST_-prefixed lid/kontra/gal/medmon/geoint/piket entries for today's WIB date (not cleaned, consistent with previous iteration).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "All new endpoints (reports/history, reports/{id}/download, reports/{id} DELETE) verified end-to-end with PDF persistence. AI summary endpoint functional again (budget restored — multi-team Indonesian summary generated successfully on yesterday's data). Only optional hardening items remain (role-gate history/download endpoints, ObjectId try/except). 12-WIB rule, role restrictions on /api/pdf, page-count <=2, and pdf_base64 exclusion from /history list all verified."
+}

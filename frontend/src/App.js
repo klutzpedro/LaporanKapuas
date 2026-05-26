@@ -5,6 +5,7 @@ import LoginPage from "@/pages/Login";
 import AppLayout from "@/components/AppLayout";
 import Dashboard from "@/pages/Dashboard";
 import SummaryPage from "@/pages/Summary";
+import HistoryPage from "@/pages/History";
 import TimLid from "@/pages/teams/TimLid";
 import TimKontra from "@/pages/teams/TimKontra";
 import TimGal from "@/pages/teams/TimGal";
@@ -29,6 +30,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/summary" element={<RoleGate roles={["piket"]}><SummaryPage /></RoleGate>} />
+            <Route path="/history" element={<HistoryPage />} />
             <Route path="/team/lid" element={<RoleGate roles={["tim_lid"]}><TimLid /></RoleGate>} />
             <Route path="/team/kontra" element={<RoleGate roles={["tim_kontra"]}><TimKontra /></RoleGate>} />
             <Route path="/team/gal" element={<RoleGate roles={["tim_gal"]}><TimGal /></RoleGate>} />
