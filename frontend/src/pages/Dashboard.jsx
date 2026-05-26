@@ -101,7 +101,6 @@ export default function Dashboard() {
                       )}
                       <div className="flex items-center gap-3 mt-1.5 text-[10px] font-mono text-zinc-500">
                         <span>OLEH: {it.created_by_name || "-"}</span>
-                        {it.sentiment_label && <span className="text-zinc-400">SENTIMEN: {it.sentiment_label.toUpperCase()}</span>}
                       </div>
                     </li>
                   ))}

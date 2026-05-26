@@ -79,16 +79,6 @@ export default function TimLid() {
             <Field label="Analisa"><Textarea data-testid="lid-analisa" value={form.analisa} onChange={(e) => set("analisa", e.target.value)} className={INP} rows={3} /></Field>
             <Field label="Tindakan Satgas"><Textarea data-testid="lid-tindakan" value={form.tindakan} onChange={(e) => set("tindakan", e.target.value)} className={INP} rows={2} /></Field>
             <Field label="Rekomendasi BAIS"><Textarea data-testid="lid-rekomendasi" value={form.rekomendasi} onChange={(e) => set("rekomendasi", e.target.value)} className={INP} rows={2} /></Field>
-            <Field label="Label Sentiment">
-              <Select value={form.sentiment_label} onValueChange={(v) => set("sentiment_label", v)}>
-                <SelectTrigger data-testid="lid-sentiment-select" className={INP}><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="positif">Positif</SelectItem>
-                  <SelectItem value="neutral">Netral</SelectItem>
-                  <SelectItem value="negatif">Negatif</SelectItem>
-                </SelectContent>
-              </Select>
-            </Field>
             <ImageUploader label="Gambar Sentiment" value={form.sentiment_image} onChange={(v) => set("sentiment_image", v)} testid="lid-sentiment-image" />
             <Button type="submit" disabled={busy} data-testid="lid-submit" className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
               <Plus size={14} weight="bold" className="mr-2" /> {busy ? "Menyimpan..." : "Simpan Laporan"}

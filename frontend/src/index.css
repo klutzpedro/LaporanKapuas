@@ -75,6 +75,9 @@ h1, h2, h3, h4 { font-family: 'Chivo', sans-serif; letter-spacing: -0.01em; }
 ::-webkit-scrollbar-thumb { background: #3a3a40; border-radius: 4px; }
 ::-webkit-scrollbar-thumb:hover { background: #525258; }
 
+/* Hide Emergent attribution badge */
+#emergent-badge { display: none !important; }
+
 .leaflet-container { background: #18181B !important; }
 .leaflet-tile-pane { filter: brightness(0.6) saturate(0.8); }
 
