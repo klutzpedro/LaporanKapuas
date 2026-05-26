@@ -1,0 +1,83 @@
+{
+  "theme": "dark",
+  "archetype": "Archetype 2: The Performance Pro (Tactical Command Center variant)",
+  "design_philosophy": "Information-dense, authoritative, and serious. The aesthetic must reflect a classified military intelligence dashboard. High contrast, distinct data visualization, and rigid grid layouts.",
+  "typography": {
+    "heading_font": "Chivo",
+    "body_font": "IBM Plex Sans",
+    "data_font": "IBM Plex Mono",
+    "rules": {
+      "h1": "text-3xl sm:text-4xl tracking-tighter font-black uppercase text-zinc-100",
+      "h2": "text-xl sm:text-2xl tracking-tight font-bold text-zinc-200",
+      "h3": "text-lg sm:text-xl tracking-tight font-semibold text-zinc-200",
+      "body": "text-sm leading-relaxed text-zinc-300",
+      "overline": "text-xs uppercase tracking-[0.2em] font-bold text-zinc-500",
+      "data_labels": "font-mono text-xs text-amber-500 tracking-wider"
+    },
+    "pairing_strategy": "The 'Swiss Brutalist' Tech approach adapted for military UI: Heavy, structured sans-serif (Chivo) for primary headings, sterile and highly readable sans (IBM Plex Sans) for body, and monospaced font (IBM Plex Mono) for coordinates, numbers, and tabular data."
+  },
+  "colors": {
+    "background": "#09090B",
+    "surface_main": "#18181B",
+    "surface_secondary": "#27272A",
+    "border": "#3F3F46",
+    "primary": "#F59E0B",
+    "primary_foreground": "#000000",
+    "text_main": "#FAFAFA",
+    "text_muted": "#A1A1AA",
+    "accent_alert": "#EF4444",
+    "accent_safe": "#10B981",
+    "accent_info": "#3B82F6",
+    "cog_aceh": "#10B981",
+    "cog_jakarta": "#3B82F6",
+    "cog_papua": "#F59E0B",
+    "cog_internasional": "#8B5CF6",
+    "notes": "Color is function only. The UI should be predominantly monochrome (obsidian and zinc tones). Accents like Red and Amber are reserved for alerts, active statuses, or primary actions."
+  },
+  "layout_and_spacing": {
+    "strategy": "MODE B: THE CONTROL ROOM GRID",
+    "grid_structure": "grid-cols-1 md:grid-cols-3 lg:grid-cols-4",
+    "gap": "gap-4 md:gap-6",
+    "padding": "p-4 md:p-6",
+    "borders": "1px solid border-zinc-800",
+    "radius": "rounded-none md:rounded-sm",
+    "shadows": "none, use 1px inner stroke for depth (e.g. shadow-[inset_0_1px_0_0_rgba(255,255,255,0.1)])",
+    "alignment": "Strict geometric alignment. Left-align data and forms. Center-align only high-level KPI values."
+  },
+  "surfaces_and_micro_themes": {
+    "header": "Solid Background (bg-zinc-950) with a hard bottom border (border-zinc-800).",
+    "dashboard_cards": "Grid Borders (Technical Look). Expose the skeleton. Flat background (bg-zinc-900), 1px subtle border, no shadow.",
+    "pdf_preview_area": "Retro-Futuristic / Document simulation. White background for the actual PDF document page, set against the dark dashboard to signify physical paper print preview."
+  },
+  "components": {
+    "buttons": "Rectangular, sharp edges (rounded-sm max). High contrast hover states. MUST include data-testid. Primary actions use the Amber primary color.",
+    "cards": "Dense padding, strictly rectangular. Used for the 3 COG + Internasional summary panels.",
+    "tables": "Dense rows, tabular numerals for dates/coordinates. Border-collapse style.",
+    "forms": "Shadcn components heavily customized. Dark backgrounds for inputs, white borders on focus. No HTML native selects or datepickers.",
+    "maps": "Geoint map must use a dark/tactical tile style (e.g., Carto Dark Matter). OPM positions marked in signal red.",
+    "charts": "Use Recharts. Minimalist axes, grid lines at 10% opacity. Colors linked to sentiment (Red=Negative, Green=Positive) for Medmon charts."
+  },
+  "icons": {
+    "library": "@phosphor-icons/react",
+    "style": "Regular or Bold weight for clear visibility at small sizes.",
+    "install_command": "yarn add @phosphor-icons/react"
+  },
+  "media": {
+    "image_urls": [],
+    "notes": "No Unsplash images. Visuals should be exclusively derived from user-uploaded data, maps, and Recharts. The UI must feel like a functional military tool, not a marketing page."
+  },
+  "accessibility_and_testing": {
+    "testing_attribute": "data-testid",
+    "testing_convention": "kebab-case, role-based (e.g., 'login-submit-button', 'geoint-form-lat-input')",
+    "contrast": "Ensure APCA standards or minimum WCAG AA (4.5:1). All text over surfaces must be #A1A1AA or brighter."
+  },
+  "instructions_to_main_agent": [
+    "TECH STACK ENFORCEMENT: Use React Javascript (.js/.jsx) with Tailwind CSS and Shadcn UI. DO NOT USE TYPESCRIPT.",
+    "DASHBOARD LAYOUT: Create an information-dense 'Control Room' dashboard with 4 main panels representing the COG (Aceh, Jakarta, Papua) and Internasional.",
+    "FORMS: Build 6 distinct daily input forms for TIM LID, TIM KONTRA, TIM GAL, TIM MEDMON, TIM GEOINT, and PIKET. Ensure form state management can handle image uploads (converted to base64 for MongoDB).",
+    "PDF GENERATION: Implement a PDF generation view (max 2 pages) for Admin/Piket. The layout should mimic a classified military brief (e.g., white background, serif or clean sans-serif for print readability, structured grid for the infographic and summary text).",
+    "AI SUMMARY INTEGRATION: Prepare the UI skeleton and service structure for Claude Sonnet 4.5 API call handling the daily summary generation.",
+    "TESTING: Every form input, button, and navigation link MUST have a semantic data-testid.",
+    "AUTH: Implement JWT-based role mapping determining which form/dashboard view is accessible."
+  ]
+}
