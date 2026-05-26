@@ -1,54 +1,45 @@
-import { useEffect } from "react";
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
-import axios from "axios";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import LoginPage from "@/pages/Login";
+import AppLayout from "@/components/AppLayout";
+import Dashboard from "@/pages/Dashboard";
+import SummaryPage from "@/pages/Summary";
+import TimLid from "@/pages/teams/TimLid";
+import TimKontra from "@/pages/teams/TimKontra";
+import TimGal from "@/pages/teams/TimGal";
+import TimMedmon from "@/pages/teams/TimMedmon";
+import TimGeoint from "@/pages/teams/TimGeoint";
+import Piket from "@/pages/teams/Piket";
+import AdminUsers from "@/pages/AdminUsers";
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
-const API = `${BACKEND_URL}/api`;
+function RoleGate({ roles, children }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== "admin" && !roles.includes(user.role)) return <Navigate to="/" replace />;
+  return children;
+}
 
-const Home = () => {
-  const helloWorldApi = async () => {
-    try {
-      const response = await axios.get(`${API}/`);
-      console.log(response.data.message);
-    } catch (e) {
-      console.error(e, `errored out requesting / api`);
-    }
-  };
-
-  useEffect(() => {
-    helloWorldApi();
-  }, []);
-
+export default function App() {
   return (
-    <div>
-      <header className="App-header">
-        <a
-          className="App-link"
-          href="https://emergent.sh"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <img src="https://avatars.githubusercontent.com/in/1201222?s=120&u=2686cf91179bbafbc7a71bfbc43004cf9ae1acea&v=4" />
-        </a>
-        <p className="mt-5">Building something incredible ~!</p>
-      </header>
-    </div>
-  );
-};
-
-function App() {
-  return (
-    <div className="App">
+    <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Home />}>
-            <Route index element={<Home />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route element={<AppLayout />}>
+            <Route path="/" element={<Dashboard />} />
+            <Route path="/summary" element={<RoleGate roles={["piket"]}><SummaryPage /></RoleGate>} />
+            <Route path="/team/lid" element={<RoleGate roles={["tim_lid"]}><TimLid /></RoleGate>} />
+            <Route path="/team/kontra" element={<RoleGate roles={["tim_kontra"]}><TimKontra /></RoleGate>} />
+            <Route path="/team/gal" element={<RoleGate roles={["tim_gal"]}><TimGal /></RoleGate>} />
+            <Route path="/team/medmon" element={<RoleGate roles={["tim_medmon"]}><TimMedmon /></RoleGate>} />
+            <Route path="/team/geoint" element={<RoleGate roles={["tim_geoint"]}><TimGeoint /></RoleGate>} />
+            <Route path="/team/piket" element={<RoleGate roles={["piket"]}><Piket /></RoleGate>} />
+            <Route path="/admin/users" element={<RoleGate roles={[]}><AdminUsers /></RoleGate>} />
+            <Route path="*" element={<Navigate to="/" replace />} />
           </Route>
         </Routes>
       </BrowserRouter>
-    </div>
+    </AuthProvider>
   );
 }
-
-export default App;

@@ -1,0 +1,39 @@
+{
+  "summary": "Backend-only testing for BAIS Summary Geospasika. 31 pytest cases across auth (login/me/register/list_users), all 6 team report endpoints (LID 4-COG, Kontra, GAL, Medmon, Geoint, Piket), role-based authorization, daily aggregation, daily/info 12-WIB rule, AI summary (Claude Sonnet 4.5 via Emergent LLM), and PDF generation. 30/31 PASS. The lone failure is /api/summary/ai POST: Emergent LLM budget exceeded (provider-side quota), NOT a code bug — the integration successfully reaches Claude and surfaces the upstream error as '[AI SUMMARY ERROR] Failed to generate chat completion: litellm.BadRequestError: OpenAIException - Budget has been exceeded! Current cost: 371.034, Max budget: 371.001'.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/summary/ai", "issue": "Emergent LLM key budget exceeded ($371.03 > $371.001). Integration code is correct; this is an environment/quota issue. Cached summary still returned by GET /api/summary/ai (but cached value is the error string)."},
+      {"endpoint": "GET /api/summary/ai", "issue": "When generation fails, the AI summary endpoint upserts the error string into ai_summaries cache (e.g. '[AI SUMMARY ERROR] ...'). Subsequent GETs will return that error string as 'summary'. Recommend NOT caching when text starts with '[AI SUMMARY ERROR]' or '[AI SUMMARY UNAVAILABLE]'."},
+      {"endpoint": "GET /api/ (root)", "issue": "Returns 404 via external ingress. The route is registered at /api/ but ingress likely strips trailing slash. Minor; not blocking."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": [
+    "/app/backend/tests/test_bais_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Top up / rotate the Emergent LLM key budget so Claude Sonnet 4.5 calls succeed; alternatively, request increased budget. The AI summary endpoint will work as soon as quota is restored — no code change required.",
+    "(Recommended) In server.py /api/summary/ai POST: skip the upsert into db.ai_summaries when the returned text starts with '[AI SUMMARY ERROR]' or '[AI SUMMARY UNAVAILABLE]', so the cache never serves stale error text. Also consider returning HTTP 502 in that path instead of 200.",
+    "(Optional) Add an explicit /api/ root handler or make response status 200; current external GET /api/ returns 404 (likely ingress trailing-slash). Non-blocking."
+  ],
+  "critical_code_review_comments": [
+    "require_role helper (server.py:98) silently grants admin universal access. Works as intended but worth documenting.",
+    "AI summary error path (ai_summary.py:92-94) returns a string starting with '[AI SUMMARY ERROR] ...' instead of raising; this means server.py /summary/ai POST returns 200 OK with the error text and caches it. Should distinguish success vs failure.",
+    "/api/pdf 12-WIB rule (server.py:469): if user passes a future report_date == today before noon, blocked correctly. But if user passes report_date != today (e.g. tomorrow), no validation occurs. Minor.",
+    "MongoDB ObjectId handling is correct — _serialize() strips _id before returning. Good.",
+    "JWT secret loaded from env; passwords use bcrypt ($2b$). seed_admin is idempotent and syncs password on change — meets playbook expectations.",
+    "Endpoints accept loose payloads; image fields are optional base64 — OK. No size limit on base64 payload; consider Pydantic constraints to prevent huge uploads (DoS surface)."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_bais_backend.py"
+  ],
+  "success_rate": {"backend": "97% (30/31)", "frontend": "not tested (backend-only request)"},
+  "test_credentials": "Seeded by backend startup. Admin: admin@bais.tni.mil.id / Bais2026! ; Piket / Lid / Kontra / Gal / Medmon / Geoint with respective passwords as per request. All login attempts succeeded.",
+  "seed_data_creation": "Tests created TEST_-prefixed reports for today's WIB date across all teams (LID x4 COGs minus 1 deleted, Kontra x2, GAL x3, Medmon x1, Geoint x1, Piket x3). Did not clean up to allow re-inspection; recommend periodic Mongo cleanup of TEST_-prefixed records.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Backend is healthy. Only blocker for full AI summary verification is Emergent LLM budget — once topped up, re-run only TestAiSummary::test_ai_summary_generate. PDF generation, all CRUD, role-based auth (admin universal access, role-specific restrictions like tim_lid->kontra 403) are verified working. JUnit XML at /app/test_reports/pytest/pytest_results.xml.",
+  "rca of the issue": "POST /api/summary/ai failure: ai_summary.py uses emergentintegrations LlmChat with model 'anthropic/claude-sonnet-4-5-20250929'. The request reaches the upstream proxy but is rejected with 'Budget has been exceeded! Current cost: 371.034, Max budget: 371.001'. The Python code catches the exception and returns a string starting with '[AI SUMMARY ERROR]'; server.py then upserts this string into db.ai_summaries and returns 200. Root cause is the EMERGENT_LLM_KEY hitting its monthly/total spend cap, not a code defect. Mitigation: (1) increase/rotate key budget; (2) update server.py to NOT cache error strings and to return 502 on AI failure."
+}
