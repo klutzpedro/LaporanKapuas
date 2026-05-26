@@ -500,13 +500,20 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
     )
 
 
+def _safe_objid(rid: str) -> ObjectId:
+    try:
+        return ObjectId(rid)
+    except Exception:
+        raise HTTPException(status_code=404, detail="ID tidak valid")
+
+
 # ===================== REPORT HISTORY =====================
 @api.get("/reports/history")
 async def reports_history(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     limit: int = 100,
-    _user: dict = Depends(get_current_user),
+    _user: dict = Depends(require_role("admin", "piket")),
 ):
     q = {}
     if start_date or end_date:
@@ -525,9 +532,9 @@ async def reports_history(
 
 
 @api.get("/reports/{rid}/download")
-async def reports_download(rid: str, _user: dict = Depends(get_current_user)):
+async def reports_download(rid: str, _user: dict = Depends(require_role("admin", "piket"))):
     import base64 as _b64
-    doc = await db.generated_reports.find_one({"_id": ObjectId(rid)})
+    doc = await db.generated_reports.find_one({"_id": _safe_objid(rid)})
     if not doc:
         raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
     pdf_bytes = _b64.b64decode(doc["pdf_base64"])
@@ -541,7 +548,7 @@ async def reports_download(rid: str, _user: dict = Depends(get_current_user)):
 
 @api.delete("/reports/{rid}")
 async def reports_delete(rid: str, _user: dict = Depends(require_role("admin"))):
-    res = await db.generated_reports.delete_one({"_id": ObjectId(rid)})
+    res = await db.generated_reports.delete_one({"_id": _safe_objid(rid)})
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Laporan tidak ditemukan")
     return {"ok": True}

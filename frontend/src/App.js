@@ -30,7 +30,7 @@ export default function App() {
           <Route element={<AppLayout />}>
             <Route path="/" element={<Dashboard />} />
             <Route path="/summary" element={<RoleGate roles={["piket"]}><SummaryPage /></RoleGate>} />
-            <Route path="/history" element={<HistoryPage />} />
+            <Route path="/history" element={<RoleGate roles={["piket"]}><HistoryPage /></RoleGate>} />
             <Route path="/team/lid" element={<RoleGate roles={["tim_lid"]}><TimLid /></RoleGate>} />
             <Route path="/team/kontra" element={<RoleGate roles={["tim_kontra"]}><TimKontra /></RoleGate>} />
             <Route path="/team/gal" element={<RoleGate roles={["tim_gal"]}><TimGal /></RoleGate>} />

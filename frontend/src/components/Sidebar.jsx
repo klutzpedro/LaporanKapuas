@@ -40,8 +40,12 @@ export default function Sidebar() {
       <nav className="flex-1 overflow-y-auto p-3 space-y-1">
         <p className="overline px-2 pt-2 pb-1">Dashboard</p>
         <SideLink to="/" icon={House} label="Ringkasan Harian" testid="nav-dashboard" />
-        <SideLink to="/summary" icon={FilePdf} label="Summary & PDF" testid="nav-summary" />
-        <SideLink to="/history" icon={Archive} label="Arsip Laporan" testid="nav-history" />
+        {(user?.role === "admin" || user?.role === "piket") && (
+          <>
+            <SideLink to="/summary" icon={FilePdf} label="Summary & PDF" testid="nav-summary" />
+            <SideLink to="/history" icon={Archive} label="Arsip Laporan" testid="nav-history" />
+          </>
+        )}
 
         <p className="overline px-2 pt-4 pb-1">Input Data Tim</p>
         {teamLinks.map((n) => (
