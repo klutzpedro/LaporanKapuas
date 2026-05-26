@@ -441,7 +441,9 @@ async def ai_summary(
     rd = report_date or report_date_for_generation()
     data = await collect_daily_data(rd)
     text = await generate_ai_summary(data)
-    # cache it
+    if text.startswith("[AI SUMMARY ERROR]") or text.startswith("[AI SUMMARY UNAVAILABLE]"):
+        raise HTTPException(status_code=502, detail=text)
+    # cache it only on success
     await db.ai_summaries.update_one(
         {"report_date": rd},
         {"$set": {"text": text, "generated_at": datetime.now(timezone.utc).isoformat(),
