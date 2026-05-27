@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { FilePdf, DownloadSimple, Trash, Funnel } from "@phosphor-icons/react";
+import { DownloadSimple, Trash, Funnel, Eye, X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm mt-1.5 h-9";
 
@@ -16,6 +16,9 @@ export default function HistoryPage() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [loading, setLoading] = useState(true);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewMeta, setPreviewMeta] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
 
   async function load(filters = {}) {
     setLoading(true);
@@ -45,6 +48,29 @@ export default function HistoryPage() {
       toast.error("Gagal mengunduh.");
     }
   }
+
+  async function preview(it) {
+    setPreviewLoading(true);
+    setPreviewMeta(it);
+    try {
+      const res = await api.get(`/reports/${it.id}/download`, { responseType: "blob" });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      setPreviewUrl(url);
+    } catch (e) {
+      toast.error("Gagal memuat pratinjau.");
+      setPreviewMeta(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
+
+  function closePreview() {
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    setPreviewUrl(null);
+    setPreviewMeta(null);
+  }
+
+  useEffect(() => () => { if (previewUrl) URL.revokeObjectURL(previewUrl); }, [previewUrl]);
 
   async function del(id) {
     if (!confirm("Hapus arsip ini?")) return;
@@ -159,7 +185,14 @@ export default function HistoryPage() {
                           : <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-500">TDK</span>}
                       </td>
                       <td className="py-3 pr-3 font-mono text-zinc-400">{fmtSize(it.size_bytes)}</td>
-                      <td className="py-3 text-right space-x-2 whitespace-nowrap">
+                      <td className="py-3 text-right space-x-1 whitespace-nowrap">
+                        <button
+                          onClick={() => preview(it)}
+                          data-testid={`history-preview-${it.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/70 text-zinc-200 hover:text-amber-400 rounded-sm btn-tactical text-[10px]"
+                        >
+                          <Eye size={12} weight="bold" /> Preview
+                        </button>
                         <button
                           onClick={() => download(it)}
                           data-testid={`history-download-${it.id}`}
@@ -185,6 +218,73 @@ export default function HistoryPage() {
           )}
         </Card>
       </div>
+
+      {/* PDF Preview Modal */}
+      {(previewMeta || previewLoading) && (
+        <div
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={closePreview}
+          data-testid="preview-modal"
+        >
+          <div
+            className="bg-zinc-950 border border-zinc-800 rounded-sm w-full max-w-5xl h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-4 px-4 py-3 border-b border-zinc-800 bg-zinc-900">
+              <div>
+                <p className="overline">PRATINJAU PDF</p>
+                <h3 className="text-sm font-bold uppercase tracking-wide mt-0.5">
+                  BAIS Summary {previewMeta?.report_date || ""}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                {previewMeta && !previewLoading && (
+                  <button
+                    onClick={() => download(previewMeta)}
+                    data-testid="preview-download-button"
+                    className="inline-flex items-center gap-1.5 px-3 h-8 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[11px]"
+                  >
+                    <DownloadSimple size={12} weight="bold" /> Unduh
+                  </button>
+                )}
+                <button
+                  onClick={closePreview}
+                  data-testid="preview-close-button"
+                  className="inline-flex items-center justify-center w-8 h-8 bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 text-zinc-400 hover:text-red-400 rounded-sm"
+                  aria-label="Tutup pratinjau"
+                >
+                  <X size={14} weight="bold" />
+                </button>
+              </div>
+            </div>
+            <div className="flex-1 bg-zinc-900">
+              {previewLoading ? (
+                <div className="h-full flex items-center justify-center text-xs font-mono text-zinc-500">
+                  Memuat pratinjau PDF...
+                </div>
+              ) : previewUrl ? (
+                <object
+                  data={previewUrl}
+                  type="application/pdf"
+                  className="w-full h-full"
+                  data-testid="preview-iframe"
+                >
+                  <div className="h-full flex items-center justify-center text-sm text-zinc-400 p-6 text-center">
+                    Browser Anda tidak mendukung pratinjau PDF inline.
+                    <br />
+                    <button
+                      onClick={() => download(previewMeta)}
+                      className="mt-3 inline-flex items-center gap-1.5 px-3 h-9 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[11px]"
+                    >
+                      <DownloadSimple size={14} weight="bold" /> Unduh PDF
+                    </button>
+                  </div>
+                </object>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
