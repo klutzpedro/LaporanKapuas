@@ -43,6 +43,7 @@ Aplikasi internal BAIS TNI / Satgas Kapuas untuk mengumpulkan input harian dari 
 - Rich-text AI summary editor (TipTap) + PDF history archive
 - Inline PDF preview on history page
 - **Edit/Update CRUD on all 6 team report lists (PUT endpoints + pencil-icon UI)** — 2026-02
+- **PDF cleanup (2026-02)**: removed "AI · CLAUDE SONNET 4.5 · EDITABLE" kicker, removed KPI count strip (LID/KONTRA/GAL/...), auto-rendered Papua map with OPM coords plotted (replaces user-uploaded peta_image), cleaned overlap labels in MEDMON/KONTRA sections
 
 ## Test Results (iteration_1)
 - Backend: 30/31 PASS — 1 failure adalah Emergent LLM budget exceeded (bukan code bug).

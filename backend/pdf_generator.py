@@ -24,6 +24,12 @@ from reportlab.lib.enums import TA_LEFT
 
 from bs4 import BeautifulSoup, NavigableString
 
+try:
+    from staticmap import StaticMap, CircleMarker
+    _HAS_STATICMAP = True
+except Exception:
+    _HAS_STATICMAP = False
+
 PAGE_W, PAGE_H = A4
 MARGIN = 12 * mm
 
@@ -111,6 +117,40 @@ def fit_image(c, img, x, y, max_w, max_h):
         c.drawImage(img, cx, cy, width=w, height=h, mask="auto", preserveAspectRatio=True)
     except Exception:
         pass
+
+
+# ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
+# Papua region bounding box (rough): lat -10.5..0, lon 130..141
+PAPUA_CENTER = (138.5, -4.5)  # (lon, lat) — Tanah Papua center
+PAPUA_ZOOM = 6                # covers entire Papua mainland
+
+def render_papua_map(items, width_px=900, height_px=700):
+    """Render a Papua-centered map with all OPM positions plotted.
+    Aktif = red, tidak_aktif = green. Returns an ImageReader or None.
+    """
+    if not _HAS_STATICMAP:
+        return None
+    try:
+        m = StaticMap(width_px, height_px, url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png")
+        # Plot markers
+        for it in items:
+            try:
+                lat = float(it.get("lat"))
+                lon = float(it.get("lon"))
+            except (TypeError, ValueError):
+                continue
+            color = "#EF4444" if it.get("status") == "aktif" else "#10B981"
+            # outer ring (white) + inner colored dot for visibility on OSM tiles
+            m.add_marker(CircleMarker((lon, lat), "#FFFFFF", 14))
+            m.add_marker(CircleMarker((lon, lat), color, 10))
+        # Render forcing the Papua-wide view (do not auto-zoom to markers)
+        image = m.render(zoom=PAPUA_ZOOM, center=PAPUA_CENTER)
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        buf.seek(0)
+        return ImageReader(buf)
+    except Exception:
+        return None
 
 
 # ---------- HEADER / FOOTER ----------
@@ -303,8 +343,7 @@ def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    title_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN",
-                           kicker="AI · CLAUDE SONNET 4.5 · EDITABLE")
+    title_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN")
 
     # Frame for paragraph flow (with inner padding)
     pad_l, pad_r, pad_t, pad_b = 4 * mm, 4 * mm, 2 * mm, 3 * mm
@@ -503,7 +542,6 @@ def _draw_lid_strip(c, x, y, w, h, data):
         by_cog.setdefault(it.get("cog", ""), []).append(it)
 
     bottom = y + 2 * mm
-    body_h = cy - bottom
     col_w = (w - 6 * mm) / 4
 
     for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
@@ -578,25 +616,19 @@ def _draw_medmon_with_images(c, x, y, w, h, data):
         img_w = w * 0.27
         pie_x = x + w * 0.43
         img = decode_image(it.get("pie_sentiment_image"))
-        c.setFont("Helvetica", 5.5)
-        c.setFillColor(COLOR_MUTED)
-        c.drawString(pie_x, ry + row_h - 3 * mm, "PIE SENTIMENT")
         if img:
-            fit_image(c, img, pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 4 * mm)
+            fit_image(c, img, pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm)
         else:
             c.setFillColor(COLOR_LIGHT)
-            c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 4 * mm, stroke=0, fill=1)
+            c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
         # chart sumber
         chart_x = x + w * 0.7
         img2 = decode_image(it.get("chart_sumber_image"))
-        c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 5.5)
-        c.drawString(chart_x, ry + row_h - 3 * mm, "CHART SUMBER")
         if img2:
-            fit_image(c, img2, chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 4 * mm)
+            fit_image(c, img2, chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm)
         else:
             c.setFillColor(COLOR_LIGHT)
-            c.rect(chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 4 * mm, stroke=0, fill=1)
+            c.rect(chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
         # divider
         if i < len(rows) - 1:
             c.setStrokeColor(COLOR_BORDER2)
@@ -647,15 +679,17 @@ def _draw_geoint_with_map(c, x, y, w, h, data):
         c.setFont("Helvetica", 6.2)
         cur_y -= 2.8 * mm
 
-    # map image (first item with peta_image, else first item)
-    map_img = None
-    for it in items:
-        if it.get("peta_image"):
-            map_img = decode_image(it["peta_image"])
-            break
+    # map image: AUTO-GENERATED Papua map with all plotted markers (overrides user upload)
+    map_img = render_papua_map(items, width_px=1200, height_px=900)
+    if map_img is None:
+        # Fallback to user-uploaded image (if any)
+        for it in items:
+            if it.get("peta_image"):
+                map_img = decode_image(it["peta_image"])
+                break
     c.setFillColor(COLOR_MUTED)
     c.setFont("Helvetica", 5.5)
-    c.drawString(x + tbl_w + 2 * mm, cy - 3 * mm, "PETA SEBARAN")
+    c.drawString(x + tbl_w + 2 * mm, cy - 3 * mm, "PETA SEBARAN PAPUA")
     if map_img:
         fit_image(c, map_img, x + tbl_w + 2 * mm, bottom + 1 * mm, img_w - 3 * mm, body_h - 6 * mm)
     else:
@@ -664,7 +698,7 @@ def _draw_geoint_with_map(c, x, y, w, h, data):
         c.setFillColor(COLOR_MUTED)
         c.setFont("Helvetica-Oblique", 6)
         c.drawCentredString(x + tbl_w + img_w / 2, bottom + body_h / 2,
-                            "(belum ada gambar peta)")
+                            "(peta tidak tersedia)")
 
 
 def _draw_kontra_with_images(c, x, y, w, h, data):
@@ -704,18 +738,14 @@ def _draw_kontra_with_images(c, x, y, w, h, data):
         # SNA image (right)
         sna_w = w * 0.18
         sna_x = x + w * 0.62
-        c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica", 5)
-        c.drawString(sna_x, ry + row_h - 3 * mm, "SNA")
         img_sna = decode_image(it.get("sna_image"))
         if img_sna:
-            fit_image(c, img_sna, sna_x, ry + 0.5 * mm, sna_w - 1 * mm, row_h - 4 * mm)
+            fit_image(c, img_sna, sna_x, ry + 0.5 * mm, sna_w - 1 * mm, row_h - 2 * mm)
         # Lainnya image (further right)
         ln_x = x + w * 0.8
-        c.drawString(ln_x, ry + row_h - 3 * mm, "LAINNYA")
         img_ln = decode_image(it.get("lainnya_image"))
         if img_ln:
-            fit_image(c, img_ln, ln_x, ry + 0.5 * mm, w * 0.18 - 1 * mm, row_h - 4 * mm)
+            fit_image(c, img_ln, ln_x, ry + 0.5 * mm, w * 0.18 - 1 * mm, row_h - 2 * mm)
         if i < len(rows) - 1:
             c.setStrokeColor(COLOR_BORDER2)
             c.setLineWidth(0.3)
@@ -809,18 +839,15 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     # =========== PAGE 1 ===========
     _draw_header(c, rd)
 
-    # Big AI Summary block (top, takes ~75% of body)
+    # Layout (KPI strip removed per user request — more space for AI summary + COG tiles)
     body_top = PAGE_H - 18 * mm - 4 * mm
     body_bottom = 13 * mm
 
-    # KPI strip (small, at the bottom right above footer)
-    kpi_h = 14 * mm
-    kpi_y = body_bottom + 0
-    cog_h = 26 * mm
-    cog_y = kpi_y + kpi_h + 3 * mm
+    cog_h = 30 * mm
+    cog_y = body_bottom
 
     sum_top = body_top
-    sum_bottom = cog_y + cog_h + 3 * mm
+    sum_bottom = cog_y + cog_h + 4 * mm
     sum_h = sum_top - sum_bottom
     _draw_executive_summary(c, MARGIN, sum_bottom, PAGE_W - 2 * MARGIN, sum_h, ai_text, data, ai_html=ai_html)
 
@@ -834,9 +861,6 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
         cx = MARGIN + i * (cog_w + gutter)
         _draw_cog_mini(c, cx, cog_y, cog_w, cog_h, cog, by_cog.get(cog, []))
-
-    # KPI strip
-    _draw_kpis(c, MARGIN, kpi_y, PAGE_W - 2 * MARGIN, kpi_h, data)
 
     _draw_footer(c, 1)
     c.showPage()
