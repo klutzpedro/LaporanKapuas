@@ -178,8 +178,12 @@ async def list_users(_user: dict = Depends(require_role("admin"))):
 # We store: collection per team, each doc has report_date (YYYY-MM-DD), created_by, created_at, payload fields.
 
 def today_wib_date_str() -> str:
-    """Effective report date for input. Always returns today's WIB date."""
-    return datetime.now(WIB).date().isoformat()
+    """Effective input date — aligned to 12:00 WIB cycle.
+    Items entered BEFORE 12:00 WIB belong to the previous day's reporting window."""
+    now = datetime.now(WIB)
+    if now.time() < dtime(12, 0):
+        return (now.date() - timedelta(days=1)).isoformat()
+    return now.date().isoformat()
 
 
 def report_date_for_generation() -> str:

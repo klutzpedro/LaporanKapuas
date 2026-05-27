@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,9 +26,14 @@ export default function TimMedmon() {
   const [form, setForm] = useState(EMPTY);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const { reportDate, periodLabel } = usePeriod();
 
-  async function load() { const { data } = await api.get("/medmon"); setItems(data); }
-  useEffect(() => { load(); }, []);
+  async function load() {
+    const params = reportDate ? { report_date: reportDate } : {};
+    const { data } = await api.get("/medmon", { params });
+    setItems(data);
+  }
+  useEffect(() => { load(); }, [reportDate]);
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
   function setBerita(i, k, v) {
     setForm((f) => { const a = [...f.berita]; a[i] = { ...a[i], [k]: v }; return { ...f, berita: a }; });
@@ -95,7 +101,7 @@ export default function TimMedmon() {
           </form>
         </Card>
 
-        <Card title="Daftar Medmon" testid="medmon-list-card">
+        <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="medmon-list-card">
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => {

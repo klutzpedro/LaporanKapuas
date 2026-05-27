@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -35,9 +36,14 @@ export default function TimGeoint() {
   const [form, setForm] = useState(EMPTY);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const { reportDate, periodLabel } = usePeriod();
 
-  async function load() { const { data } = await api.get("/geoint"); setItems(data); }
-  useEffect(() => { load(); }, []);
+  async function load() {
+    const params = reportDate ? { report_date: reportDate } : {};
+    const { data } = await api.get("/geoint", { params });
+    setItems(data);
+  }
+  useEffect(() => { load(); }, [reportDate]);
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
   async function submit(e) {
@@ -82,7 +88,7 @@ export default function TimGeoint() {
           </form>
         </Card>
 
-        <Card title="Peta Sebaran OPM" testid="geoint-map-card" className="lg:col-span-2">
+        <Card title="Peta Sebaran OPM" kicker={`PERIODE ${periodLabel}`} testid="geoint-map-card" className="lg:col-span-2">
           <div className="h-[420px] border border-zinc-800 rounded-sm overflow-hidden">
             <MapContainer center={[-2.5, 118]} zoom={4} style={{ height: "100%", width: "100%" }}>
               <TileLayer
@@ -109,7 +115,7 @@ export default function TimGeoint() {
           </div>
 
           <div className="mt-4">
-            <h4 className="overline mb-2">Daftar Posisi</h4>
+            <h4 className="overline mb-2">Daftar Laporan Hari Ini</h4>
             {items.length === 0 ? <Empty /> : (
               <table className="w-full text-xs">
                 <thead><tr className="overline text-left"><th className="pb-2">Wilayah</th><th className="pb-2">Nama</th><th className="pb-2">Status</th><th className="pb-2">Koordinat</th><th></th></tr></thead>

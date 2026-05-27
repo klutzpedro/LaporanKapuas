@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, COG_LABEL, COG_COLOR } from "@/lib/api";
+import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,12 +27,14 @@ export default function TimLid() {
   const [form, setForm] = useState(EMPTY);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const { reportDate, periodLabel } = usePeriod();
 
   async function load() {
-    const { data } = await api.get("/lid");
+    const params = reportDate ? { report_date: reportDate } : {};
+    const { data } = await api.get("/lid", { params });
     setItems(data);
   }
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load(); }, [reportDate]);
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
@@ -86,7 +89,7 @@ export default function TimLid() {
           </form>
         </Card>
 
-        <Card title="Daftar Laporan LID (Hari Ini)" testid="lid-list-card">
+        <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="lid-list-card">
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (

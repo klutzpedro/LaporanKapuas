@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,9 +19,14 @@ export default function Piket() {
   const [form, setForm] = useState(EMPTY);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const { reportDate, periodLabel } = usePeriod();
 
-  async function load() { const { data } = await api.get("/piket"); setItems(data); }
-  useEffect(() => { load(); }, []);
+  async function load() {
+    const params = reportDate ? { report_date: reportDate } : {};
+    const { data } = await api.get("/piket", { params });
+    setItems(data);
+  }
+  useEffect(() => { load(); }, [reportDate]);
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
   async function submit(e) {
@@ -58,7 +64,7 @@ export default function Piket() {
           </form>
         </Card>
 
-        <Card title="Daftar Laporan Piket" testid="piket-list-card">
+        <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="piket-list-card">
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (
