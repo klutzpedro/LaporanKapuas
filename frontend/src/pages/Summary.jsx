@@ -116,23 +116,21 @@ export default function SummaryPage() {
               type="date"
               value={reportDate}
               onChange={(e) => setReportDate(e.target.value)}
-              className="bg-zinc-950 border-zinc-800 rounded-sm mt-1.5 h-10"
+              className="bg-zinc-950 border-zinc-800 rounded-sm mt-1.5 w-full font-mono text-sm"
               data-testid="report-date-input"
             />
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setReportDate(info?.report_date || "")}
-                data-testid="date-default"
-                className="flex-1 text-[10px] font-mono uppercase tracking-wider py-1.5 px-2 border border-zinc-800 hover:border-amber-500/70 hover:text-amber-400 text-zinc-400 rounded-sm transition-colors"
-              >
-                <ArrowsClockwise size={11} className="inline mr-1" />
-                Default ({info?.report_date || "—"})
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setReportDate(info?.report_date || "")}
+              data-testid="date-default"
+              className="mt-3 w-full text-[10px] font-mono uppercase tracking-wider py-2 px-2 border border-zinc-800 hover:border-amber-500/70 hover:text-amber-400 text-zinc-400 rounded-sm transition-colors flex items-center justify-center gap-1.5"
+            >
+              <ArrowsClockwise size={11} />
+              Default ({info?.report_date || "—"})
+            </button>
             {info?.before_noon && reportDate === info?.report_date && (
               <p className="mt-3 text-[11px] text-amber-400 font-mono leading-relaxed">
-                ⚠ Saat ini sebelum 12:00 WIB. Default tanggal otomatis ke H-1 ({info.report_date}).
+                ⚠ Saat ini sebelum 12:00 WIB. Default ke H-1 ({info.report_date}).
               </p>
             )}
           </Card>

@@ -81,6 +81,30 @@ h1, h2, h3, h4 { font-family: 'Chivo', sans-serif; letter-spacing: -0.01em; }
 .leaflet-container { background: #18181B !important; }
 .leaflet-tile-pane { filter: brightness(0.6) saturate(0.8); }
 
+/* Normalize native date inputs (iOS/Safari often centers + oversizes them) */
+input[type="date"], input[type="datetime-local"], input[type="time"] {
+  -webkit-appearance: none;
+  appearance: none;
+  text-align: left;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  line-height: 1.2;
+  padding: 0.5rem 0.75rem;
+  min-height: 40px;
+}
+input[type="date"]::-webkit-date-and-time-value,
+input[type="datetime-local"]::-webkit-date-and-time-value {
+  text-align: left;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 13px;
+  margin: 0;
+}
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8) sepia(0.4) saturate(8) hue-rotate(15deg);
+  cursor: pointer;
+  opacity: 0.9;
+}
+
 .grid-bg {
   background-image:
     linear-gradient(rgba(63,63,70,0.18) 1px, transparent 1px),
