@@ -4,16 +4,27 @@ import { PageHeader, Card } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FilePdf, Robot, Clock, ArrowsClockwise } from "@phosphor-icons/react";
+import { FilePdf, Robot, Clock, ArrowsClockwise, FloppyDisk } from "@phosphor-icons/react";
 import { toast } from "sonner";
+import RichEditor from "@/components/RichEditor";
+import { marked } from "marked";
+
+function mdToHtml(md) {
+  if (!md) return "";
+  // If already looks like HTML, return as-is
+  if (/<\w+[^>]*>/.test(md)) return md;
+  try { return marked.parse(md, { breaks: true }); } catch { return md; }
+}
 
 export default function SummaryPage() {
   const [info, setInfo] = useState(null);
   const [reportDate, setReportDate] = useState("");
-  const [aiText, setAiText] = useState("");
+  const [aiHtml, setAiHtml] = useState("");
+  const [originalHtml, setOriginalHtml] = useState("");
   const [aiMeta, setAiMeta] = useState(null);
   const [busyAI, setBusyAI] = useState(false);
   const [busyPDF, setBusyPDF] = useState(false);
+  const [busySave, setBusySave] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -28,10 +39,13 @@ export default function SummaryPage() {
     (async () => {
       try {
         const s = await api.get("/summary/ai", { params: { report_date: reportDate } });
-        setAiText(s.data?.summary || "");
-        setAiMeta(s.data?.generated_at ? { generated_at: s.data.generated_at } : null);
+        const initial = s.data?.html || mdToHtml(s.data?.summary || "");
+        setAiHtml(initial);
+        setOriginalHtml(initial);
+        setAiMeta(s.data?.generated_at ? { generated_at: s.data.generated_at, edited_at: s.data.edited_at } : null);
       } catch {
-        setAiText("");
+        setAiHtml("");
+        setOriginalHtml("");
       }
     })();
   }, [reportDate]);
@@ -40,7 +54,9 @@ export default function SummaryPage() {
     setBusyAI(true);
     try {
       const r = await api.post("/summary/ai", { report_date: reportDate });
-      setAiText(r.data.summary);
+      const html = r.data?.html || mdToHtml(r.data?.summary || "");
+      setAiHtml(html);
+      setOriginalHtml(html);
       toast.success("Ringkasan AI berhasil dibuat dari data semua tim.");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Gagal membuat ringkasan AI.");
@@ -49,9 +65,27 @@ export default function SummaryPage() {
     }
   }
 
+  async function saveEdits() {
+    setBusySave(true);
+    try {
+      await api.patch("/summary/ai", { report_date: reportDate, html: aiHtml });
+      setOriginalHtml(aiHtml);
+      toast.success("Perubahan ringkasan tersimpan.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menyimpan.");
+    } finally {
+      setBusySave(false);
+    }
+  }
+
   async function downloadPDF() {
     setBusyPDF(true);
     try {
+      // Auto-save edits before downloading
+      if (aiHtml && aiHtml !== originalHtml) {
+        await api.patch("/summary/ai", { report_date: reportDate, html: aiHtml });
+        setOriginalHtml(aiHtml);
+      }
       const res = await api.get("/pdf", { params: { report_date: reportDate }, responseType: "blob" });
       const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
       const a = document.createElement("a");
@@ -65,17 +99,16 @@ export default function SummaryPage() {
       if (e.response?.data instanceof Blob) {
         try {
           const text = await e.response.data.text();
-          const j = JSON.parse(text);
-          msg = j.detail || msg;
+          const j = JSON.parse(text); msg = j.detail || msg;
         } catch { /* */ }
-      } else if (e.response?.data?.detail) {
-        msg = e.response.data.detail;
-      }
+      } else if (e.response?.data?.detail) msg = e.response.data.detail;
       toast.error(msg);
     } finally {
       setBusyPDF(false);
     }
   }
+
+  const isDirty = aiHtml && aiHtml !== originalHtml;
 
   return (
     <div data-testid="summary-page">
@@ -89,7 +122,7 @@ export default function SummaryPage() {
               onClick={generateAI}
               disabled={busyAI || !reportDate}
               data-testid="generate-ai-button"
-              className="h-10 rounded-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 btn-tactical"
+              className="h-10 rounded-sm bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 btn-tactical text-zinc-100"
             >
               <Robot size={14} weight="bold" className="mr-2" />
               {busyAI ? "Membuat..." : "AI Summary"}
@@ -139,15 +172,15 @@ export default function SummaryPage() {
             <ul className="space-y-3 text-xs text-zinc-300 leading-relaxed">
               <li className="flex gap-2">
                 <Clock size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span>Laporan tanggal hari ini hanya dapat di-generate setelah <b className="text-amber-400">12:00 WIB</b>.</span>
+                <span>Laporan hari ini hanya dapat di-generate setelah <b className="text-amber-400">12:00 WIB</b>.</span>
               </li>
               <li className="flex gap-2">
                 <Robot size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span>AI Summary menggabungkan input <b>SEMUA TIM</b> (LID, Kontra, GAL, Medmon, Geoint, Piket) menjadi satu narasi padat &lt;320 kata.</span>
+                <span>AI menggabungkan input <b>SEMUA TIM</b> menjadi narasi padat &lt;320 kata.</span>
               </li>
               <li className="flex gap-2">
                 <FilePdf size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span>Output PDF max <b>2 halaman</b>. Hal 1 = Summary AI + KPI + 4 mini-COG. Hal 2 = Data dukung (gambar pie/chart/peta/SNA).</span>
+                <span>Anda dapat <b className="text-amber-400">mengedit</b> ringkasan (bold, italic, underline, warna, font, ukuran) sebelum download PDF.</span>
               </li>
               <li className="flex gap-2">
                 <FilePdf size={14} className="text-amber-400 shrink-0 mt-0.5" />
@@ -159,17 +192,36 @@ export default function SummaryPage() {
 
         <div className="lg:col-span-2">
           <Card
-            title="Pratinjau Ringkasan AI"
-            kicker={aiMeta?.generated_at ? `Dibuat: ${new Date(aiMeta.generated_at).toLocaleString("id-ID")}` : "BELUM ADA"}
+            title="Pratinjau & Edit Ringkasan AI"
+            kicker={aiMeta?.edited_at
+              ? `Diedit: ${new Date(aiMeta.edited_at).toLocaleString("id-ID")}`
+              : aiMeta?.generated_at
+                ? `Dibuat: ${new Date(aiMeta.generated_at).toLocaleString("id-ID")}`
+                : "BELUM ADA"}
             color="#8B5CF6"
             testid="ai-preview-card"
+            right={
+              <Button
+                onClick={saveEdits}
+                disabled={busySave || !isDirty || !aiHtml}
+                data-testid="save-edits-button"
+                className={`h-8 rounded-sm btn-tactical ${
+                  isDirty
+                    ? "bg-amber-500 hover:bg-amber-400 text-zinc-950"
+                    : "bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed"
+                }`}
+              >
+                <FloppyDisk size={12} weight="bold" className="mr-1.5" />
+                {busySave ? "Menyimpan..." : isDirty ? "Simpan" : "Tersimpan"}
+              </Button>
+            }
           >
-            {aiText ? (
-              <pre className="whitespace-pre-wrap text-sm text-zinc-200 leading-relaxed font-sans">{aiText}</pre>
+            {aiHtml ? (
+              <RichEditor value={aiHtml} onChange={setAiHtml} testid="ai-rich-editor" />
             ) : (
               <div className="text-sm text-zinc-500 py-12 text-center">
                 Belum ada ringkasan AI untuk tanggal <b className="text-amber-400 font-mono">{reportDate || "—"}</b>.
-                Klik <b className="text-amber-400">AI Summary</b> untuk membuatnya.
+                Klik <b className="text-amber-400">AI Summary</b> untuk membuatnya — lalu Anda bisa mengeditnya di sini.
               </div>
             )}
           </Card>

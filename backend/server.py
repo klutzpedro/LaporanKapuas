@@ -443,14 +443,40 @@ async def ai_summary(
     text = await generate_ai_summary(data)
     if text.startswith("[AI SUMMARY ERROR]") or text.startswith("[AI SUMMARY UNAVAILABLE]"):
         raise HTTPException(status_code=502, detail=text)
-    # cache it only on success
+    # markdown -> html for editor consumption
+    from md_to_html import md_to_html
+    html = md_to_html(text)
+    now_iso = datetime.now(timezone.utc).isoformat()
     await db.ai_summaries.update_one(
         {"report_date": rd},
-        {"$set": {"text": text, "generated_at": datetime.now(timezone.utc).isoformat(),
-                  "generated_by": user["id"]}},
+        {"$set": {
+            "text": text,
+            "html": html,
+            "generated_at": now_iso,
+            "edited_at": None,
+            "generated_by": user["id"],
+        }},
         upsert=True,
     )
-    return {"report_date": rd, "summary": text}
+    return {"report_date": rd, "summary": text, "html": html}
+
+
+@api.patch("/summary/ai")
+async def ai_summary_edit(
+    report_date: str = Body(..., embed=True),
+    html: str = Body(..., embed=True),
+    user: dict = Depends(require_role("admin", "piket")),
+):
+    res = await db.ai_summaries.update_one(
+        {"report_date": report_date},
+        {"$set": {
+            "html": html,
+            "edited_at": datetime.now(timezone.utc).isoformat(),
+            "edited_by": user["id"],
+        }},
+        upsert=True,
+    )
+    return {"ok": True, "modified": res.modified_count}
 
 
 @api.get("/summary/ai")
@@ -458,8 +484,14 @@ async def get_ai_summary(report_date: Optional[str] = None, _user: dict = Depend
     rd = report_date or report_date_for_generation()
     doc = await db.ai_summaries.find_one({"report_date": rd})
     if not doc:
-        return {"report_date": rd, "summary": None}
-    return {"report_date": rd, "summary": doc["text"], "generated_at": doc.get("generated_at")}
+        return {"report_date": rd, "summary": None, "html": None}
+    return {
+        "report_date": rd,
+        "summary": doc.get("text"),
+        "html": doc.get("html"),
+        "generated_at": doc.get("generated_at"),
+        "edited_at": doc.get("edited_at"),
+    }
 
 
 # ===================== PDF GENERATION =====================
@@ -472,10 +504,11 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
         raise HTTPException(status_code=400,
                             detail="Laporan tanggal hari ini hanya bisa di-generate setelah pukul 12:00 WIB.")
     data = await collect_daily_data(rd)
-    # Get cached AI summary if any
+    # Get cached AI summary if any — prefer edited HTML over raw text
     ai_doc = await db.ai_summaries.find_one({"report_date": rd})
-    ai_text = ai_doc["text"] if ai_doc else None
-    pdf_bytes = build_summary_pdf(data, ai_text)
+    ai_text = ai_doc.get("text") if ai_doc else None
+    ai_html = ai_doc.get("html") if ai_doc else None
+    pdf_bytes = build_summary_pdf(data, ai_text, ai_html=ai_html)
     filename = f"BAIS_Summary_{rd}.pdf"
 
     # Persist to history (generated_reports)

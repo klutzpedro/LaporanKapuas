@@ -3,6 +3,9 @@
 NEW LAYOUT (per user request):
 - Page 1 = EXECUTIVE SUMMARY (AI narrative) at the top + compact KPI strip + 4 small COG tiles.
 - Page 2 = Supporting data with uploaded images displayed.
+
+If ai_html is provided, render the executive summary with rich text (bold, italic,
+underline, color, font, size) via reportlab Paragraph + HTML translation.
 """
 import io
 import base64
@@ -15,6 +18,11 @@ from reportlab.lib.colors import HexColor, white
 from reportlab.pdfgen import canvas
 from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.lib.utils import ImageReader
+from reportlab.platypus import Paragraph, Frame
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.lib.enums import TA_LEFT
+
+from bs4 import BeautifulSoup, NavigableString
 
 PAGE_W, PAGE_H = A4
 MARGIN = 12 * mm
@@ -155,6 +163,134 @@ def _empty(c, x, y, label="— Tidak ada laporan —"):
     c.drawString(x + 2.5 * mm, y - 3.5 * mm, label)
 
 
+# ---------- HTML → reportlab Paragraph markup ----------
+# reportlab.platypus.Paragraph supports a limited HTML-like markup:
+# <b>, <i>, <u>, <font name=".." size=".." color="#..">, <br/>, <para>, etc.
+# We translate Tiptap-generated HTML into a sequence of paragraph dicts with style.
+
+_TIPTAP_FONT_MAP = {
+    "ibm plex sans": "Helvetica",
+    "georgia": "Times-Roman",
+    "times new roman": "Times-Roman",
+    "ibm plex mono": "Courier",
+    "chivo": "Helvetica-Bold",
+}
+
+
+def _font_lookup(family_css: str) -> str:
+    if not family_css:
+        return None
+    key = family_css.split(",")[0].strip().strip("'\"").lower()
+    return _TIPTAP_FONT_MAP.get(key)
+
+
+def _inline_html(node, inherited=None) -> str:
+    """Recursively convert inline HTML nodes to reportlab inline markup."""
+    inherited = inherited or {}
+    if isinstance(node, NavigableString):
+        text = str(node).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+        return text
+    if not getattr(node, "name", None):
+        return ""
+
+    name = node.name.lower()
+    # Block-level tags handled outside; here only inline
+    inner = "".join(_inline_html(c, inherited) for c in node.children)
+
+    if name in ("strong", "b"):
+        return f"<b>{inner}</b>"
+    if name in ("em", "i"):
+        return f"<i>{inner}</i>"
+    if name == "u":
+        return f"<u>{inner}</u>"
+    if name == "br":
+        return "<br/>"
+    if name in ("span", "font"):
+        style = (node.get("style") or "").lower()
+        attrs = {}
+        # font-family
+        m = re.search(r"font-family:\s*([^;]+)", style)
+        if m:
+            fn = _font_lookup(m.group(1).strip())
+            if fn:
+                attrs["face"] = fn
+        # font-size: support px values
+        m = re.search(r"font-size:\s*(\d+(?:\.\d+)?)\s*px", style)
+        if m:
+            # px -> pt approx (px * 0.75)
+            attrs["size"] = str(round(float(m.group(1)) * 0.75, 1))
+        # color
+        m = re.search(r"color:\s*(#[0-9A-Fa-f]{3,8}|rgb\([^)]+\))", style)
+        if m:
+            attrs["color"] = m.group(1)
+        if not attrs:
+            return inner
+        attrs_str = " ".join(f'{k}="{v}"' for k, v in attrs.items())
+        return f"<font {attrs_str}>{inner}</font>"
+    if name == "a":
+        href = node.get("href", "")
+        return f'<font color="#3B82F6"><u>{inner}</u></font>' if not href else f'<link href="{href}"><font color="#3B82F6"><u>{inner}</u></font></link>'
+
+    return inner
+
+
+def html_to_paragraphs(html: str, base_size_pt: float = 8.5) -> list:
+    """Parse HTML and return list of (style_kwargs, markup_text) tuples for Paragraph."""
+    soup = BeautifulSoup(html or "", "html.parser")
+    blocks = []
+
+    def push(text, **style):
+        text = (text or "").strip()
+        if not text:
+            return
+        blocks.append((style, text))
+
+    body = soup.body or soup
+    for el in body.find_all(recursive=False):
+        nm = el.name.lower() if el.name else ""
+        if nm in ("h1",):
+            push(_inline_html(el), size=base_size_pt + 4, bold=True, color="#0B1220", space=2)
+        elif nm == "h2":
+            push(_inline_html(el), size=base_size_pt + 2.5, bold=True, color="#F59E0B", space=1.5)
+        elif nm == "h3":
+            push(_inline_html(el), size=base_size_pt + 1.5, bold=True, color="#0B1220", space=1)
+        elif nm in ("p", "div"):
+            push(_inline_html(el), size=base_size_pt, space=1)
+        elif nm in ("ul", "ol"):
+            for i, li in enumerate(el.find_all("li", recursive=False), 1):
+                bullet = "•" if nm == "ul" else f"{i}."
+                push(f'<font color="#F59E0B">{bullet}</font>&nbsp;&nbsp;{_inline_html(li)}',
+                     size=base_size_pt, space=0.5, indent=8)
+        elif nm == "hr":
+            blocks.append(({"hr": True, "space": 1}, ""))
+        elif nm == "br":
+            blocks.append(({"space": 0.5}, ""))
+        else:
+            # Fallback: treat as paragraph
+            push(_inline_html(el), size=base_size_pt, space=1)
+
+    # If no block-level tags found, just dump whole content as a paragraph
+    if not blocks:
+        text = _inline_html(body)
+        if text.strip():
+            push(text, size=base_size_pt, space=1)
+    return blocks
+
+
+def _make_pstyle(name, size, bold=False, color="#0F172A", indent=0):
+    return ParagraphStyle(
+        name=name,
+        fontName="Helvetica-Bold" if bold else "Helvetica",
+        fontSize=size,
+        leading=size * 1.25,
+        textColor=HexColor(color),
+        alignment=TA_LEFT,
+        leftIndent=indent,
+        spaceBefore=0,
+        spaceAfter=0,
+    )
+
+
 # ---------- EXECUTIVE SUMMARY (PAGE 1 - BIG) ----------
 HEADING_RE = re.compile(
     r"^(RINGKASAN\b|ANALISA\b|REKOMENDASI\b|ANALISA\s*&\s*REKOMENDASI\b|"
@@ -163,41 +299,82 @@ HEADING_RE = re.compile(
 )
 
 
-def _draw_executive_summary(c, x, y, w, h, ai_text, data):
+def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cur_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN",
-                         kicker="AI · CLAUDE SONNET 4.5")
+    title_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN",
+                           kicker="AI · CLAUDE SONNET 4.5 · EDITABLE")
 
-    text = ai_text or _fallback_summary(data)
-    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
-    text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
+    # Frame for paragraph flow (with inner padding)
+    pad_l, pad_r, pad_t, pad_b = 4 * mm, 4 * mm, 2 * mm, 3 * mm
+    frame_x = x + pad_l
+    frame_y = y + pad_b
+    frame_w = w - pad_l - pad_r
+    frame_h = title_y - frame_y - pad_t
+    frame = Frame(frame_x, frame_y, frame_w, frame_h,
+                  leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                  showBoundary=0)
 
-    inner_w = w - 7 * mm
-    bottom = y + 2 * mm
-
-    for paragraph in text.split("\n"):
-        if cur_y < bottom + 3 * mm:
-            break
-        if not paragraph.strip():
-            cur_y -= 1.2 * mm  # tighter blank line
-            continue
-        is_heading = bool(HEADING_RE.match(paragraph.strip()))
-        if is_heading:
-            font_name, font_size, line_h = "Helvetica-Bold", 8.2, 3.2 * mm
-            c.setFillColor(COLOR_HEADER)
-        else:
-            font_name, font_size, line_h = "Helvetica", 8, 3.0 * mm
-            c.setFillColor(COLOR_TEXT)
-        c.setFont(font_name, font_size)
-        for line in wrap_to_width(paragraph.strip(), font_name, font_size, inner_w):
-            if cur_y < bottom + 2 * mm:
+    # Render rich HTML if available, else fallback to plain text rendering
+    if ai_html:
+        blocks = html_to_paragraphs(ai_html, base_size_pt=8.5)
+        flowables = []
+        from reportlab.platypus import Spacer, HRFlowable
+        for style, text in blocks:
+            if style.get("hr"):
+                flowables.append(HRFlowable(width="100%", thickness=0.4,
+                                            color=HexColor("#CBD5E1"),
+                                            spaceBefore=2, spaceAfter=2))
+                continue
+            sp = style.get("space", 1)
+            ps = _make_pstyle(
+                "p",
+                size=style.get("size", 8.5),
+                bold=style.get("bold", False),
+                color=style.get("color", "#0F172A"),
+                indent=style.get("indent", 0),
+            )
+            try:
+                flowables.append(Paragraph(text, ps))
+            except Exception:
+                # Fallback if markup is invalid: strip tags and retry
+                safe = re.sub(r"<[^>]+>", "", text)
+                flowables.append(Paragraph(safe, ps))
+            if sp > 0:
+                flowables.append(Spacer(1, sp * mm))
+        # Add flowables until frame full
+        for f in flowables:
+            if not frame.add(f, c):
                 break
-            c.drawString(x + 3.5 * mm, cur_y - line_h + 0.8 * mm, line)
-            cur_y -= line_h
-        # tiny gap between paragraphs
-        cur_y -= 0.3 * mm
+    else:
+        # Plain text fallback (previous behavior)
+        text = ai_text or _fallback_summary(data)
+        text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+        text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
+        cur_y = title_y - 1 * mm
+        inner_w = w - 7 * mm
+        bottom = y + 2 * mm
+        for paragraph in text.split("\n"):
+            if cur_y < bottom + 3 * mm:
+                break
+            if not paragraph.strip():
+                cur_y -= 1.2 * mm
+                continue
+            is_heading = bool(HEADING_RE.match(paragraph.strip()))
+            if is_heading:
+                font_name, font_size, line_h = "Helvetica-Bold", 8.2, 3.2 * mm
+                c.setFillColor(COLOR_HEADER)
+            else:
+                font_name, font_size, line_h = "Helvetica", 8, 3.0 * mm
+                c.setFillColor(COLOR_TEXT)
+            c.setFont(font_name, font_size)
+            for line in wrap_to_width(paragraph.strip(), font_name, font_size, inner_w):
+                if cur_y < bottom + 2 * mm:
+                    break
+                c.drawString(x + 3.5 * mm, cur_y - line_h + 0.8 * mm, line)
+                cur_y -= line_h
+            cur_y -= 0.3 * mm
 
 
 def _fallback_summary(data):
@@ -624,7 +801,7 @@ def _draw_gal_piket(c, x, y, w, h, data):
 
 
 # ---------- MAIN ----------
-def build_summary_pdf(data, ai_text):
+def build_summary_pdf(data, ai_text, ai_html=None):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     rd = data.get("report_date", "")
@@ -645,7 +822,7 @@ def build_summary_pdf(data, ai_text):
     sum_top = body_top
     sum_bottom = cog_y + cog_h + 3 * mm
     sum_h = sum_top - sum_bottom
-    _draw_executive_summary(c, MARGIN, sum_bottom, PAGE_W - 2 * MARGIN, sum_h, ai_text, data)
+    _draw_executive_summary(c, MARGIN, sum_bottom, PAGE_W - 2 * MARGIN, sum_h, ai_text, data, ai_html=ai_html)
 
     # 4 mini COG tiles row
     grid_w = PAGE_W - 2 * MARGIN
