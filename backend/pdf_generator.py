@@ -705,7 +705,7 @@ def _draw_kontra_with_images(c, x, y, w, h, data):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cy = _section_header(c, x, y + h, w, "KONTRA · PROFILING TO",
+    cy = _section_header(c, x, y + h, w, "PROFILING (TIM KONTRA)",
                          f"{len(data.get('kontra', []))} TO")
     items = data.get("kontra", [])
     if not items:
@@ -718,21 +718,21 @@ def _draw_kontra_with_images(c, x, y, w, h, data):
 
     for i, it in enumerate(rows):
         ry = cy - 1 * mm - (i + 1) * row_h
-        # name + tag
+        # name + tag (text col width = 55% so badge doesn't overlap)
         c.setFillColor(COLOR_HEADER)
         c.setFont("Helvetica-Bold", 7)
-        name = truncate_to_width(it.get("nama_to", "-"), "Helvetica-Bold", 7, w * 0.5)
+        name = truncate_to_width(it.get("nama_to", "-"), "Helvetica-Bold", 7, w * 0.45)
         c.drawString(x + 2 * mm, ry + row_h - 3 * mm, name)
         is_satgas = it.get("sumber") == "to_satgas"
         c.setFont("Helvetica-Bold", 5.5)
         c.setFillColor(COLOR_RED if is_satgas else COLOR_BLUE)
-        c.drawRightString(x + w * 0.6, ry + row_h - 3 * mm, "TO SATGAS" if is_satgas else "TO INTERNAL")
+        c.drawString(x + w * 0.46, ry + row_h - 3 * mm, "TO SATGAS" if is_satgas else "TO INTERNAL")
         # description
         c.setFillColor(COLOR_MUTED)
         c.setFont("Helvetica", 6)
         ket = it.get("keterangan") or it.get("data_diri") or ""
         line_y = ry + row_h - 5.5 * mm
-        for ln in wrap_to_width(ket, "Helvetica", 6, w * 0.6 - 2 * mm)[:3]:
+        for ln in wrap_to_width(ket, "Helvetica", 6, w * 0.6 - 2 * mm)[:4]:
             c.drawString(x + 2 * mm, line_y, ln)
             line_y -= 2.3 * mm
         # SNA image (right)
@@ -752,82 +752,56 @@ def _draw_kontra_with_images(c, x, y, w, h, data):
             c.line(x + 1 * mm, ry, x + w - 1 * mm, ry)
 
 
-def _draw_gal_piket(c, x, y, w, h, data):
-    """Combined GAL (with thumbnails) + PIKET notes."""
+def _draw_gal_wide(c, x, y, w, h, data):
+    """Wide GAL section — shows up to 5 content thumbnails with title + category badge."""
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
-    cy = _section_header(c, x, y + h, w, "GAL · KONTEN GALANG / PIKET",
-                         f"GAL {len(data.get('gal', []))} · PIKET {len(data.get('piket', []))}")
+    cy = _section_header(c, x, y + h, w, "KONTEN / NARASI / MEME (TIM GAL)",
+                         f"{len(data.get('gal', []))} KONTEN")
     bottom = y + 2 * mm
     body_h = cy - bottom
 
-    # split horizontally: left 60% GAL with thumbnails, right 40% PIKET text
-    left_w = w * 0.6
-    right_x = x + left_w + 1 * mm
-
-    # GAL section
-    items = data.get("gal", [])[:3]
-    if items:
-        thumb_w = (left_w - 4 * mm) / 3
-        thumb_h = body_h - 6 * mm
-        for i, it in enumerate(items):
-            tx = x + 1 * mm + i * (thumb_w + 1 * mm)
-            ty = bottom + 1 * mm
-            # frame
-            c.setFillColor(COLOR_LIGHT)
-            c.rect(tx, ty, thumb_w, thumb_h, stroke=0, fill=1)
-            img = decode_image(it.get("gambar"))
-            if img:
-                fit_image(c, img, tx, ty + 5 * mm, thumb_w, thumb_h - 7 * mm)
-            # category badge
-            cat = (it.get("kategori") or "").upper()
-            cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
-            c.setFillColor(cat_color)
-            c.rect(tx, ty + thumb_h - 3 * mm, thumb_w, 3 * mm, stroke=0, fill=1)
-            c.setFillColor(white)
-            c.setFont("Helvetica-Bold", 5.5)
-            c.drawString(tx + 1 * mm, ty + thumb_h - 3 * mm + 0.8 * mm, cat)
-            # title
-            c.setFillColor(COLOR_TEXT)
-            c.setFont("Helvetica-Bold", 5.8)
-            judul = truncate_to_width(it.get("judul", "-"), "Helvetica-Bold", 5.8, thumb_w - 1 * mm)
-            c.drawString(tx + 0.5 * mm, ty + 2 * mm, judul)
-    else:
+    items = data.get("gal", [])[:5]
+    if not items:
         c.setFillColor(COLOR_MUTED)
         c.setFont("Helvetica-Oblique", 6.5)
         c.drawString(x + 2 * mm, cy - 5 * mm, "Tidak ada konten GAL.")
+        return
 
-    # PIKET section (right)
-    c.setStrokeColor(COLOR_BORDER2)
-    c.setLineWidth(0.3)
-    c.line(right_x - 1 * mm, cy - 1 * mm, right_x - 1 * mm, bottom + 1 * mm)
+    n = len(items)
+    gap = 1.5 * mm
+    inner = w - 2 * mm - (n - 1) * gap
+    thumb_w = inner / n
+    thumb_h = body_h - 2 * mm
+    badge_h = 3.5 * mm
+    title_h = 4 * mm
 
-    c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica-Bold", 6)
-    c.drawString(right_x, cy - 3 * mm, "PIKET · SATGAS TEK / SANDI / MEDIS")
-
-    piket_items = data.get("piket", [])[:4]
-    cur_y = cy - 6 * mm
-    if not piket_items:
-        c.setFont("Helvetica-Oblique", 6)
-        c.drawString(right_x, cur_y, "Tidak ada laporan piket.")
-    else:
-        SATGAS_COLORS = {"tek": COLOR_BLUE, "sandi": COLOR_PURPLE, "medis": COLOR_GREEN}
-        for it in piket_items:
-            if cur_y < bottom + 2 * mm:
-                break
-            c.setFillColor(SATGAS_COLORS.get(it.get("satgas"), COLOR_MUTED))
-            c.setFont("Helvetica-Bold", 5.8)
-            c.drawString(right_x, cur_y, f"[{(it.get('satgas') or '').upper()}] " +
-                         truncate_to_width(it.get("judul", "-"), "Helvetica-Bold", 5.8, w - left_w - 8 * mm))
-            cur_y -= 2.6 * mm
-            c.setFillColor(COLOR_TEXT)
-            c.setFont("Helvetica", 5.8)
-            for ln in wrap_to_width(it.get("isi", ""), "Helvetica", 5.8, w - left_w - 4 * mm)[:2]:
-                c.drawString(right_x, cur_y, ln)
-                cur_y -= 2.4 * mm
-            cur_y -= 1 * mm
+    for i, it in enumerate(items):
+        tx = x + 1 * mm + i * (thumb_w + gap)
+        ty = bottom + 1 * mm
+        # background frame
+        c.setFillColor(COLOR_LIGHT)
+        c.rect(tx, ty, thumb_w, thumb_h, stroke=0, fill=1)
+        # image area = middle (between top badge and bottom title)
+        img_area_y = ty + title_h
+        img_area_h = thumb_h - badge_h - title_h
+        img = decode_image(it.get("gambar"))
+        if img:
+            fit_image(c, img, tx, img_area_y, thumb_w, img_area_h)
+        # category badge at top
+        cat = (it.get("kategori") or "").upper()
+        cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
+        c.setFillColor(cat_color)
+        c.rect(tx, ty + thumb_h - badge_h, thumb_w, badge_h, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(tx + 1 * mm, ty + thumb_h - badge_h + 1 * mm, cat or "—")
+        # title at bottom
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica-Bold", 6.5)
+        for j, line in enumerate(wrap_to_width(it.get("judul", "-"), "Helvetica-Bold", 6.5, thumb_w - 1 * mm)[:2]):
+            c.drawString(tx + 0.7 * mm, ty + title_h - 1.5 * mm - j * 2.2 * mm, line)
 
 
 # ---------- MAIN ----------
@@ -873,22 +847,26 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # 4 vertical sections stacked, each ~25% of available height
     section_gap = 2 * mm
-    section_h = (avail_h - 3 * section_gap) / 4
+    # 5 vertical sections stacked: LID → KONTRA → GAL → MEDMON → GEOINT
+    section_gap = 2 * mm
+    section_h = (avail_h - 4 * section_gap) / 5
     w = PAGE_W - 2 * MARGIN
 
-    # 1. LID strip
-    _draw_lid_strip(c, MARGIN, avail_top - section_h, w, section_h, data)
-    # 2. MEDMON with images
-    y2 = avail_top - 2 * section_h - section_gap
-    _draw_medmon_with_images(c, MARGIN, y2, w, section_h, data)
-    # 3. GEOINT with map
-    y3 = avail_top - 3 * section_h - 2 * section_gap
-    _draw_geoint_with_map(c, MARGIN, y3, w, section_h, data)
-    # 4. KONTRA + GAL/PIKET (split row)
-    y4 = avail_bottom
-    half = (w - section_gap) / 2
-    _draw_kontra_with_images(c, MARGIN, y4, half, section_h, data)
-    _draw_gal_piket(c, MARGIN + half + section_gap, y4, half, section_h, data)
+    # 1. LID berita trending
+    y1 = avail_top - section_h
+    _draw_lid_strip(c, MARGIN, y1, w, section_h, data)
+    # 2. KONTRA profiling
+    y2 = y1 - section_h - section_gap
+    _draw_kontra_with_images(c, MARGIN, y2, w, section_h, data)
+    # 3. GAL konten/narasi/meme (wide)
+    y3 = y2 - section_h - section_gap
+    _draw_gal_wide(c, MARGIN, y3, w, section_h, data)
+    # 4. MEDMON with images
+    y4 = y3 - section_h - section_gap
+    _draw_medmon_with_images(c, MARGIN, y4, w, section_h, data)
+    # 5. GEOINT with auto-map
+    y5 = y4 - section_h - section_gap
+    _draw_geoint_with_map(c, MARGIN, y5, w, section_h, data)
 
     _draw_footer(c, 2)
     c.showPage()
