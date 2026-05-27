@@ -835,6 +835,85 @@ def _draw_gal_wide(c, x, y, w, h, data):
 COG_LABEL = {"aceh": "ACEH", "jakarta": "JAKARTA", "papua": "PAPUA", "internasional": "INTERNASIONAL"}
 
 
+def _measure_lid_card(item, w):
+    pad = 2 * mm
+    inner_w = w - 2 * pad
+    img_w = 32 * mm if item.get("sentiment_image") else 0
+    text_w = inner_w - (img_w + 2 * mm if img_w else 0)
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    link = (item.get("link") or "").strip()
+    link_lines = wrap_to_width(link, "Helvetica", 6, text_w)[:2] if link else []
+    blocks = []
+    for key in ["fakta", "analisa", "tindakan", "rekomendasi"]:
+        val = (item.get(key) or "").strip()
+        if val:
+            lines = wrap_to_width(val, "Helvetica", 6.5, text_w)[:4]
+            blocks.append(lines)
+    h = 3 * mm + 4 * mm
+    h += 2.7 * mm * len(judul_lines)
+    if link_lines:
+        h += 1 * mm + 2.2 * mm * len(link_lines)
+    for lines in blocks:
+        h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
+    h += 2 * mm
+    if img_w:
+        h = max(h, img_w * 0.6 + 4 * mm)
+    return h
+
+
+def _measure_kontra_card(item, w):
+    pad = 2 * mm
+    inner_w = w - 2 * pad
+    medsos = [m for m in (item.get("medsos") or []) if m]
+    sna_img = item.get("sna_image")
+    lainnya_img = item.get("lainnya_image")
+    has_imgs = bool(sna_img or lainnya_img)
+    img_block_w = 38 * mm if has_imgs else 0
+    text_w = inner_w - (img_block_w + 2 * mm if has_imgs else 0)
+    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)[:5]
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    medsos_lines = []
+    for m in medsos[:6]:
+        for ln in wrap_to_width(m, "Helvetica", 6, text_w):
+            medsos_lines.append(ln)
+    h = 3 * mm + 4 * mm + 0.5 * mm
+    if data_lines:
+        h += 2.8 * mm + 2.3 * mm * len(data_lines) + 0.5 * mm
+    if medsos_lines:
+        h += 2.8 * mm + 2.2 * mm * len(medsos_lines) + 0.5 * mm
+    if ket_lines:
+        h += 2.8 * mm + 2.3 * mm * len(ket_lines) + 0.5 * mm
+    h += 2 * mm
+    if has_imgs:
+        h = max(h, 35 * mm)
+    return h
+
+
+def _measure_gal_card(item, w):
+    pad = 2 * mm
+    inner_w = w - 2 * pad
+    has_img = bool(item.get("gambar"))
+    img_w = 40 * mm if has_img else 0
+    text_w = inner_w - (img_w + 2 * mm if has_img else 0)
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    links = [lk for lk in (item.get("links") or []) if lk]
+    link_lines = []
+    for ln in links[:8]:
+        for w_ln in wrap_to_width(ln, "Helvetica", 6, text_w):
+            link_lines.append(w_ln)
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    h = 3 * mm + 4 * mm
+    h += 2.7 * mm * len(judul_lines) + 0.5 * mm
+    if link_lines:
+        h += 2.6 * mm + 2.2 * mm * len(link_lines) + 0.5 * mm
+    if ket_lines:
+        h += 2.6 * mm + 2.3 * mm * len(ket_lines) + 0.5 * mm
+    h += 2 * mm
+    if has_img:
+        h = max(h, 32 * mm)
+    return h
+
+
 def _draw_lid_card(c, x, y_top, w, item):
     """Detailed LID card. Returns total height consumed."""
     pad = 2 * mm
@@ -1182,15 +1261,18 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         state["y"] -= 6 * mm
     else:
         for it in lid_items:
-            ensure_space(95 * mm)
-            h = _draw_lid_card(c, MARGIN, state["y"], w, it)
-            state["y"] -= h + 2 * mm
+            h_est = _measure_lid_card(it, w)
+            if state["y"] - h_est < avail_bottom:
+                new_page()
+            _draw_lid_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h_est + 2 * mm
 
     state["y"] -= 2 * mm
 
     # KONTRA
     kontra_items = data.get("kontra", [])
-    ensure_space(15 * mm)
+    if state["y"] - 12 * mm < avail_bottom:
+        new_page()
     section_title("PROFILING (TIM KONTRA)", f"{len(kontra_items)} TO")
     if not kontra_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
@@ -1198,15 +1280,18 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         state["y"] -= 6 * mm
     else:
         for it in kontra_items:
-            ensure_space(95 * mm)
-            h = _draw_kontra_card(c, MARGIN, state["y"], w, it)
-            state["y"] -= h + 2 * mm
+            h_est = _measure_kontra_card(it, w)
+            if state["y"] - h_est < avail_bottom:
+                new_page()
+            _draw_kontra_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h_est + 2 * mm
 
     state["y"] -= 2 * mm
 
     # GAL
     gal_items = data.get("gal", [])
-    ensure_space(15 * mm)
+    if state["y"] - 12 * mm < avail_bottom:
+        new_page()
     section_title("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN")
     if not gal_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
@@ -1214,27 +1299,35 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         state["y"] -= 6 * mm
     else:
         for it in gal_items:
-            ensure_space(75 * mm)
-            h = _draw_gal_card(c, MARGIN, state["y"], w, it)
-            state["y"] -= h + 2 * mm
+            h_est = _measure_gal_card(it, w)
+            if state["y"] - h_est < avail_bottom:
+                new_page()
+            _draw_gal_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h_est + 2 * mm
 
     state["y"] -= 2 * mm
 
-    # MEDMON (condensed)
-    medmon_h = 55 * mm
-    ensure_space(medmon_h + 8 * mm)
-    section_title("MEDIA MONITORING", f"{len(data.get('medmon', []))} SUBJEK")
-    _draw_medmon_with_images(c, MARGIN, state["y"] - medmon_h, w, medmon_h + 4 * mm, data)
-    state["y"] -= medmon_h + 4 * mm
+    # MEDMON — adaptive height (fill remaining page 2 if enough room, else new page)
+    MEDMON_MIN = 15 * mm
+    MEDMON_PREF = 65 * mm
+    rem = state["y"] - avail_bottom - 2 * mm
+    if rem < MEDMON_MIN:
+        new_page()
+        rem = state["y"] - avail_bottom - 2 * mm
+    h_use = min(MEDMON_PREF, rem)
+    _draw_medmon_with_images(c, MARGIN, state["y"] - h_use, w, h_use, data)
+    state["y"] -= h_use + 3 * mm
 
-    state["y"] -= 2 * mm
-
-    # GEOINT with auto-Papua map
-    geo_h = 65 * mm
-    ensure_space(geo_h + 8 * mm)
-    section_title("GEOINT · POSISI OPM", f"{len(data.get('geoint', []))} TITIK")
-    _draw_geoint_with_map(c, MARGIN, state["y"] - geo_h, w, geo_h + 4 * mm, data)
-    state["y"] -= geo_h + 4 * mm
+    # GEOINT — adaptive height
+    GEOINT_MIN = 35 * mm
+    GEOINT_PREF = 75 * mm
+    rem = state["y"] - avail_bottom - 2 * mm
+    if rem < GEOINT_MIN:
+        new_page()
+        rem = state["y"] - avail_bottom - 2 * mm
+    h_use = min(GEOINT_PREF, rem)
+    _draw_geoint_with_map(c, MARGIN, state["y"] - h_use, w, h_use, data)
+    state["y"] -= h_use + 3 * mm
 
     _draw_footer(c, state["page"])
     c.showPage()
