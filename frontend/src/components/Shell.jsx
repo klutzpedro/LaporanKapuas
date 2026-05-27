@@ -33,9 +33,18 @@ export function Card({ title, kicker, color, right, children, testid, className 
 
 export function StatTile({ label, value, color = "#F59E0B", testid }) {
   return (
-    <div className="bg-zinc-900 border border-zinc-800 rounded-sm p-4" data-testid={testid}>
-      <p className="overline">{label}</p>
-      <p className="text-3xl font-black mt-1 tracking-tighter" style={{ color }}>{value}</p>
+    <div
+      className="bg-zinc-900 border border-zinc-800 rounded-sm px-4 py-3 flex flex-col justify-between min-h-[110px]"
+      data-testid={testid}
+    >
+      <p className="overline whitespace-nowrap truncate">{label}</p>
+      <p
+        className="text-4xl font-black tracking-tighter leading-none tabular-nums"
+        style={{ color }}
+        data-testid={`${testid}-value`}
+      >
+        {value}
+      </p>
     </div>
   );
 }

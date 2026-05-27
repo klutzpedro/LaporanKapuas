@@ -5,12 +5,12 @@ import { Newspaper, UserFocus, Megaphone, ChartLineUp, Crosshair, ClipboardText,
 import { Button } from "@/components/ui/button";
 
 const TEAMS = [
-  { key: "lid", label: "Berita LID", icon: Newspaper, color: "#F59E0B" },
-  { key: "kontra", label: "Profiling Kontra", icon: UserFocus, color: "#EF4444" },
-  { key: "gal", label: "Konten Galang", icon: Megaphone, color: "#3B82F6" },
-  { key: "medmon", label: "Medmon", icon: ChartLineUp, color: "#8B5CF6" },
-  { key: "geoint", label: "Posisi OPM", icon: Crosshair, color: "#10B981" },
-  { key: "piket", label: "Piket Satgas", icon: ClipboardText, color: "#A1A1AA" },
+  { key: "lid", label: "TIM LID", icon: Newspaper, color: "#F59E0B" },
+  { key: "kontra", label: "KONTRA", icon: UserFocus, color: "#EF4444" },
+  { key: "gal", label: "TIM GAL", icon: Megaphone, color: "#3B82F6" },
+  { key: "medmon", label: "MEDMON", icon: ChartLineUp, color: "#8B5CF6" },
+  { key: "geoint", label: "GEOINT", icon: Crosshair, color: "#10B981" },
+  { key: "piket", label: "PIKET", icon: ClipboardText, color: "#A1A1AA" },
 ];
 
 export default function Dashboard() {
