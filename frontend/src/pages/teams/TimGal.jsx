@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
-import { Plus, Trash } from "@phosphor-icons/react";
+import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500/40 focus-visible:border-amber-500 mt-1.5";
 const EMPTY = { kategori: "narasi", judul: "", gambar: null, links: [""], keterangan: "" };
@@ -17,6 +17,7 @@ const CATEGORY = { narasi: "NARASI", video: "VIDEO", medsos: "MEDSOS" };
 
 export default function TimGal() {
   const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const { reportDate, periodLabel } = usePeriod();
@@ -30,22 +31,47 @@ export default function TimGal() {
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
   function setLink(i, v) { setForm((f) => { const a = [...f.links]; a[i] = v; return { ...f, links: a }; }); }
 
+  function startEdit(it) {
+    setEditId(it.id);
+    setForm({
+      kategori: it.kategori || "narasi",
+      judul: it.judul || "",
+      gambar: it.gambar || null,
+      links: (it.links && it.links.length) ? it.links : [""],
+      keterangan: it.keterangan || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function cancelEdit() { setEditId(null); setForm(EMPTY); }
+
   async function submit(e) {
     e.preventDefault(); setBusy(true);
     try {
-      await api.post("/gal", { ...form, links: form.links.filter(Boolean) });
-      toast.success("Konten tersimpan."); setForm(EMPTY); load();
+      const payload = { ...form, links: form.links.filter(Boolean) };
+      if (editId) {
+        await api.put(`/gal/${editId}`, payload);
+        toast.success("Konten diperbarui.");
+      } else {
+        await api.post("/gal", payload);
+        toast.success("Konten tersimpan.");
+      }
+      setForm(EMPTY); setEditId(null); load();
     } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal menyimpan."); }
     finally { setBusy(false); }
   }
 
-  async function del(id) { if (!confirm("Hapus?")) return; await api.delete(`/gal/${id}`); load(); }
+  async function del(id) {
+    if (!confirm("Hapus?")) return;
+    await api.delete(`/gal/${id}`);
+    if (editId === id) cancelEdit();
+    load();
+  }
 
   return (
     <div data-testid="gal-page">
       <PageHeader overline="TIM GAL" title="Konten Penggalangan" subtitle="Narasi · Video · Medsos" />
       <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Form Konten" color="#3B82F6" testid="gal-form-card">
+        <Card title={editId ? "Edit Konten" : "Form Konten"} color={editId ? "#10B981" : "#3B82F6"} testid="gal-form-card">
           <form onSubmit={submit} className="space-y-4" data-testid="gal-form">
             <Field label="Kategori">
               <Select value={form.kategori} onValueChange={(v) => set("kategori", v)}>
@@ -74,9 +100,16 @@ export default function TimGal() {
             </div>
             <Field label="Keterangan"><Textarea data-testid="gal-ket" value={form.keterangan} onChange={(e) => set("keterangan", e.target.value)} className={INP} rows={2} /></Field>
 
-            <Button type="submit" disabled={busy} data-testid="gal-submit" className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
-              {busy ? "Menyimpan..." : "Simpan Konten"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy} data-testid="gal-submit" className="flex-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
+                {busy ? "Menyimpan..." : (editId ? "Perbarui Konten" : "Simpan Konten")}
+              </Button>
+              {editId && (
+                <Button type="button" onClick={cancelEdit} data-testid="gal-cancel-edit" className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 btn-tactical rounded-sm h-10 px-4">
+                  <X size={14} weight="bold" className="mr-1" /> Batal
+                </Button>
+              )}
+            </div>
           </form>
         </Card>
 
@@ -84,7 +117,7 @@ export default function TimGal() {
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (
-                <li key={it.id} className="bg-zinc-950 border border-zinc-800 rounded-sm p-3 flex justify-between items-start gap-3" data-testid={`gal-item-${it.id}`}>
+                <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 flex justify-between items-start gap-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`gal-item-${it.id}`}>
                   <div className="flex-1">
                     <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{CATEGORY[it.kategori]}</span>
                     <p className="font-bold text-sm mt-1">{it.judul}</p>
@@ -92,7 +125,10 @@ export default function TimGal() {
                       {(it.links || []).map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="block text-[11px] font-mono text-amber-400 break-all">{l}</a>)}
                     </div>
                   </div>
-                  <button onClick={() => del(it.id)} data-testid={`gal-delete-${it.id}`} className="text-zinc-500 hover:text-red-400"><Trash size={14} weight="bold" /></button>
+                  <div className="flex gap-1 items-start">
+                    <button onClick={() => startEdit(it)} data-testid={`gal-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
+                    <button onClick={() => del(it.id)} data-testid={`gal-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -39,6 +39,10 @@ Aplikasi internal BAIS TNI / Satgas Kapuas untuk mengumpulkan input harian dari 
 - Map view Leaflet untuk Geoint
 - Admin user management page
 - Sidebar role-aware navigation
+- Collapsible sidebar (localStorage persisted)
+- Rich-text AI summary editor (TipTap) + PDF history archive
+- Inline PDF preview on history page
+- **Edit/Update CRUD on all 6 team report lists (PUT endpoints + pencil-icon UI)** — 2026-02
 
 ## Test Results (iteration_1)
 - Backend: 30/31 PASS — 1 failure adalah Emergent LLM budget exceeded (bukan code bug).

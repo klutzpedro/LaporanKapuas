@@ -216,6 +216,21 @@ def _serialize(doc: dict) -> dict:
     return doc
 
 
+async def update_report(collection: str, rid: str, data: dict, user: dict) -> dict:
+    """Update an existing report. Preserves report_date/created_by/created_at, refreshes updated_at."""
+    update = {
+        **data,
+        "updated_by": user["id"],
+        "updated_by_name": user.get("name", ""),
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    await db[collection].update_one({"_id": ObjectId(rid)}, {"$set": update})
+    doc = await db[collection].find_one({"_id": ObjectId(rid)})
+    if not doc:
+        raise HTTPException(404, "Not found")
+    return _serialize(doc)
+
+
 # ===================== TIM LID =====================
 # 4 berita trending: 3 COG + 1 Internasional
 # Fields: cog, judul, link, fakta, analisa, tindakan, rekomendasi, sentiment_image (base64)
@@ -241,6 +256,11 @@ async def list_lid(report_date: Optional[str] = None, _user: dict = Depends(get_
     q = {"report_date": report_date} if report_date else {}
     cur = db.lid_reports.find(q).sort("created_at", -1)
     return [_serialize(d) async for d in cur]
+
+
+@api.put("/lid/{rid}")
+async def update_lid(rid: str, payload: LidIn, user: dict = Depends(require_role("tim_lid", "admin"))):
+    return await update_report("lid_reports", rid, payload.model_dump(), user)
 
 
 @api.delete("/lid/{rid}")
@@ -273,6 +293,11 @@ async def list_kontra(report_date: Optional[str] = None, _user: dict = Depends(g
     return [_serialize(d) async for d in cur]
 
 
+@api.put("/kontra/{rid}")
+async def update_kontra(rid: str, payload: KontraIn, user: dict = Depends(require_role("tim_kontra", "admin"))):
+    return await update_report("kontra_reports", rid, payload.model_dump(), user)
+
+
 @api.delete("/kontra/{rid}")
 async def delete_kontra(rid: str, _user: dict = Depends(require_role("tim_kontra", "admin"))):
     await db.kontra_reports.delete_one({"_id": ObjectId(rid)})
@@ -298,6 +323,11 @@ async def list_gal(report_date: Optional[str] = None, _user: dict = Depends(get_
     q = {"report_date": report_date} if report_date else {}
     cur = db.gal_reports.find(q).sort("created_at", -1)
     return [_serialize(d) async for d in cur]
+
+
+@api.put("/gal/{rid}")
+async def update_gal(rid: str, payload: GalIn, user: dict = Depends(require_role("tim_gal", "admin"))):
+    return await update_report("gal_reports", rid, payload.model_dump(), user)
 
 
 @api.delete("/gal/{rid}")
@@ -335,6 +365,11 @@ async def list_medmon(report_date: Optional[str] = None, _user: dict = Depends(g
     return [_serialize(d) async for d in cur]
 
 
+@api.put("/medmon/{rid}")
+async def update_medmon(rid: str, payload: MedmonIn, user: dict = Depends(require_role("tim_medmon", "admin"))):
+    return await update_report("medmon_reports", rid, payload.model_dump(), user)
+
+
 @api.delete("/medmon/{rid}")
 async def delete_medmon(rid: str, _user: dict = Depends(require_role("tim_medmon", "admin"))):
     await db.medmon_reports.delete_one({"_id": ObjectId(rid)})
@@ -365,6 +400,11 @@ async def list_geoint(report_date: Optional[str] = None, _user: dict = Depends(g
     return [_serialize(d) async for d in cur]
 
 
+@api.put("/geoint/{rid}")
+async def update_geoint(rid: str, payload: GeointIn, user: dict = Depends(require_role("tim_geoint", "admin"))):
+    return await update_report("geoint_reports", rid, payload.model_dump(), user)
+
+
 @api.delete("/geoint/{rid}")
 async def delete_geoint(rid: str, _user: dict = Depends(require_role("tim_geoint", "admin"))):
     await db.geoint_reports.delete_one({"_id": ObjectId(rid)})
@@ -389,6 +429,11 @@ async def list_piket(report_date: Optional[str] = None, _user: dict = Depends(ge
     q = {"report_date": report_date} if report_date else {}
     cur = db.piket_reports.find(q).sort("created_at", -1)
     return [_serialize(d) async for d in cur]
+
+
+@api.put("/piket/{rid}")
+async def update_piket(rid: str, payload: PiketIn, user: dict = Depends(require_role("piket", "admin"))):
+    return await update_report("piket_reports", rid, payload.model_dump(), user)
 
 
 @api.delete("/piket/{rid}")

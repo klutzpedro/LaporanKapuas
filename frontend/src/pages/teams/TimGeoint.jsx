@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
-import { Trash } from "@phosphor-icons/react";
+import { Trash, PencilSimple, X } from "@phosphor-icons/react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
@@ -34,6 +34,7 @@ const EMPTY = {
 
 export default function TimGeoint() {
   const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const { reportDate, periodLabel } = usePeriod();
@@ -46,22 +47,50 @@ export default function TimGeoint() {
   useEffect(() => { load(); }, [reportDate]);
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
+  function startEdit(it) {
+    setEditId(it.id);
+    setForm({
+      wilayah: it.wilayah || "",
+      nama_orang: it.nama_orang || "",
+      no_hp: it.no_hp || "",
+      lat: it.lat ?? -4.27,
+      lon: it.lon ?? 138.08,
+      peta_image: it.peta_image || null,
+      status: it.status || "aktif",
+      keterangan: it.keterangan || "",
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+  function cancelEdit() { setEditId(null); setForm(EMPTY); }
+
   async function submit(e) {
     e.preventDefault(); setBusy(true);
     try {
-      await api.post("/geoint", { ...form, lat: parseFloat(form.lat), lon: parseFloat(form.lon) });
-      toast.success("Posisi OPM tersimpan."); setForm(EMPTY); load();
+      const payload = { ...form, lat: parseFloat(form.lat), lon: parseFloat(form.lon) };
+      if (editId) {
+        await api.put(`/geoint/${editId}`, payload);
+        toast.success("Posisi OPM diperbarui.");
+      } else {
+        await api.post("/geoint", payload);
+        toast.success("Posisi OPM tersimpan.");
+      }
+      setForm(EMPTY); setEditId(null); load();
     } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal menyimpan."); }
     finally { setBusy(false); }
   }
 
-  async function del(id) { if (!confirm("Hapus?")) return; await api.delete(`/geoint/${id}`); load(); }
+  async function del(id) {
+    if (!confirm("Hapus?")) return;
+    await api.delete(`/geoint/${id}`);
+    if (editId === id) cancelEdit();
+    load();
+  }
 
   return (
     <div data-testid="geoint-page">
       <PageHeader overline="TIM GEOINT" title="Posisi OPM Termonitor" subtitle="Wilayah · Nama · HP · Lat/Lon · Status" />
       <div className="p-6 grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <Card title="Form Posisi" color="#10B981" testid="geoint-form-card" className="lg:col-span-1">
+        <Card title={editId ? "Edit Posisi" : "Form Posisi"} color={editId ? "#F59E0B" : "#10B981"} testid="geoint-form-card" className="lg:col-span-1">
           <form onSubmit={submit} className="space-y-4" data-testid="geoint-form">
             <Field label="Wilayah"><Input data-testid="geoint-wilayah" value={form.wilayah} onChange={(e) => set("wilayah", e.target.value)} required className={INP} /></Field>
             <Field label="Nama Orang"><Input data-testid="geoint-nama" value={form.nama_orang} onChange={(e) => set("nama_orang", e.target.value)} required className={INP} /></Field>
@@ -82,9 +111,16 @@ export default function TimGeoint() {
             <ImageUploader label="Gambar Peta" value={form.peta_image} onChange={(v) => set("peta_image", v)} testid="geoint-peta" />
             <Field label="Keterangan"><Textarea data-testid="geoint-ket" value={form.keterangan} onChange={(e) => set("keterangan", e.target.value)} className={INP} rows={2} /></Field>
 
-            <Button type="submit" disabled={busy} data-testid="geoint-submit" className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
-              {busy ? "Menyimpan..." : "Simpan Posisi OPM"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy} data-testid="geoint-submit" className="flex-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
+                {busy ? "Menyimpan..." : (editId ? "Perbarui Posisi" : "Simpan Posisi OPM")}
+              </Button>
+              {editId && (
+                <Button type="button" onClick={cancelEdit} data-testid="geoint-cancel-edit" className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 btn-tactical rounded-sm h-10 px-4">
+                  <X size={14} weight="bold" className="mr-1" /> Batal
+                </Button>
+              )}
+            </div>
           </form>
         </Card>
 
@@ -121,12 +157,17 @@ export default function TimGeoint() {
                 <thead><tr className="overline text-left"><th className="pb-2">Wilayah</th><th className="pb-2">Nama</th><th className="pb-2">Status</th><th className="pb-2">Koordinat</th><th></th></tr></thead>
                 <tbody className="font-mono">
                   {items.map((it) => (
-                    <tr key={it.id} className="border-t border-zinc-800" data-testid={`geoint-item-${it.id}`}>
+                    <tr key={it.id} className={`border-t border-zinc-800 ${editId === it.id ? "bg-amber-500/5" : ""}`} data-testid={`geoint-item-${it.id}`}>
                       <td className="py-1.5">{it.wilayah}</td>
                       <td className="py-1.5">{it.nama_orang}</td>
                       <td className={it.status === "aktif" ? "text-red-400" : "text-emerald-400"}>{it.status?.toUpperCase()}</td>
                       <td className="text-zinc-400">{it.lat}, {it.lon}</td>
-                      <td className="text-right"><button onClick={() => del(it.id)} data-testid={`geoint-delete-${it.id}`} className="text-zinc-500 hover:text-red-400"><Trash size={12} weight="bold" /></button></td>
+                      <td className="text-right">
+                        <div className="inline-flex gap-1">
+                          <button onClick={() => startEdit(it)} data-testid={`geoint-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400" title="Edit"><PencilSimple size={12} weight="bold" /></button>
+                          <button onClick={() => del(it.id)} data-testid={`geoint-delete-${it.id}`} className="text-zinc-500 hover:text-red-400" title="Hapus"><Trash size={12} weight="bold" /></button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>

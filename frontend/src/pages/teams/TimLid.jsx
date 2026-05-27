@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
-import { Plus, Trash } from "@phosphor-icons/react";
+import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const EMPTY = {
   cog: "aceh",
@@ -25,6 +25,7 @@ const EMPTY = {
 
 export default function TimLid() {
   const [form, setForm] = useState(EMPTY);
+  const [editId, setEditId] = useState(null);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const { reportDate, periodLabel } = usePeriod();
@@ -38,13 +39,36 @@ export default function TimLid() {
 
   function set(k, v) { setForm((f) => ({ ...f, [k]: v })); }
 
+  function startEdit(it) {
+    setEditId(it.id);
+    setForm({
+      cog: it.cog || "aceh",
+      judul: it.judul || "",
+      link: it.link || "",
+      fakta: it.fakta || "",
+      analisa: it.analisa || "",
+      tindakan: it.tindakan || "",
+      rekomendasi: it.rekomendasi || "",
+      sentiment_label: it.sentiment_label || "neutral",
+      sentiment_image: it.sentiment_image || null,
+    });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  function cancelEdit() { setEditId(null); setForm(EMPTY); }
+
   async function submit(e) {
     e.preventDefault();
     setBusy(true);
     try {
-      await api.post("/lid", form);
-      toast.success("Berita LID tersimpan.");
-      setForm(EMPTY);
+      if (editId) {
+        await api.put(`/lid/${editId}`, form);
+        toast.success("Berita LID diperbarui.");
+      } else {
+        await api.post("/lid", form);
+        toast.success("Berita LID tersimpan.");
+      }
+      setForm(EMPTY); setEditId(null);
       load();
     } catch (e) {
       toast.error(e.response?.data?.detail || "Gagal menyimpan.");
@@ -54,6 +78,7 @@ export default function TimLid() {
   async function del(id) {
     if (!confirm("Hapus berita ini?")) return;
     await api.delete(`/lid/${id}`);
+    if (editId === id) cancelEdit();
     load();
   }
 
@@ -61,7 +86,7 @@ export default function TimLid() {
     <div data-testid="lid-page">
       <PageHeader overline="TIM LID" title="Input Berita Trending" subtitle="4 berita per hari: 3 COG (ACEH, JAKARTA, PAPUA) + 1 INTERNASIONAL" />
       <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card title="Form Input" color="#F59E0B" testid="lid-form-card">
+        <Card title={editId ? "Edit Laporan" : "Form Input"} color={editId ? "#10B981" : "#F59E0B"} testid="lid-form-card">
           <form onSubmit={submit} className="space-y-4" data-testid="lid-form">
             <div>
               <Label className="overline">Center of Gravity</Label>
@@ -83,9 +108,17 @@ export default function TimLid() {
             <Field label="Tindakan Satgas"><Textarea data-testid="lid-tindakan" value={form.tindakan} onChange={(e) => set("tindakan", e.target.value)} className={INP} rows={2} /></Field>
             <Field label="Rekomendasi BAIS"><Textarea data-testid="lid-rekomendasi" value={form.rekomendasi} onChange={(e) => set("rekomendasi", e.target.value)} className={INP} rows={2} /></Field>
             <ImageUploader label="Gambar Sentiment" value={form.sentiment_image} onChange={(v) => set("sentiment_image", v)} testid="lid-sentiment-image" />
-            <Button type="submit" disabled={busy} data-testid="lid-submit" className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
-              <Plus size={14} weight="bold" className="mr-2" /> {busy ? "Menyimpan..." : "Simpan Laporan"}
-            </Button>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={busy} data-testid="lid-submit" className="flex-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
+                {editId ? <PencilSimple size={14} weight="bold" className="mr-2" /> : <Plus size={14} weight="bold" className="mr-2" />}
+                {busy ? "Menyimpan..." : (editId ? "Perbarui Laporan" : "Simpan Laporan")}
+              </Button>
+              {editId && (
+                <Button type="button" onClick={cancelEdit} data-testid="lid-cancel-edit" className="bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 btn-tactical rounded-sm h-10 px-4">
+                  <X size={14} weight="bold" className="mr-1" /> Batal
+                </Button>
+              )}
+            </div>
           </form>
         </Card>
 
@@ -93,7 +126,7 @@ export default function TimLid() {
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (
-                <li key={it.id} className="border-l-2 pl-3 py-1" style={{ borderColor: COG_COLOR[it.cog] }} data-testid={`lid-item-${it.id}`}>
+                <li key={it.id} className={`border-l-2 pl-3 py-1 ${editId === it.id ? "bg-amber-500/5" : ""}`} style={{ borderColor: COG_COLOR[it.cog] }} data-testid={`lid-item-${it.id}`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1">
                       <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm" style={{ background: `${COG_COLOR[it.cog]}22`, color: COG_COLOR[it.cog] }}>{COG_LABEL[it.cog]}</span>
@@ -101,7 +134,10 @@ export default function TimLid() {
                       {it.link && <a href={it.link} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-amber-400 break-all">{it.link}</a>}
                       <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
                     </div>
-                    <button onClick={() => del(it.id)} data-testid={`lid-delete-${it.id}`} className="text-zinc-500 hover:text-red-400"><Trash size={14} weight="bold" /></button>
+                    <div className="flex gap-1 items-start">
+                      <button onClick={() => startEdit(it)} data-testid={`lid-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
+                      <button onClick={() => del(it.id)} data-testid={`lid-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
+                    </div>
                   </div>
                 </li>
               ))}
