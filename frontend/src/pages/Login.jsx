@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { formatApiErrorDetail } from "@/lib/api";
-import { ShieldStar, Lock, EnvelopeSimple } from "@phosphor-icons/react";
+import { Lock, EnvelopeSimple } from "@phosphor-icons/react";
 import { useNavigate } from "react-router-dom";
 
 const QUICK = [
@@ -46,9 +46,7 @@ export default function LoginPage() {
         <div className="absolute inset-0 bg-gradient-to-br from-zinc-950 via-zinc-950/80 to-transparent" />
         <div className="relative z-10 p-12 flex flex-col justify-between w-full">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-500 text-zinc-950 flex items-center justify-center">
-              <ShieldStar size={22} weight="fill" />
-            </div>
+            <img src="/logo.png" alt="BAIS TNI" className="w-12 h-12 object-contain rounded-sm" data-testid="login-logo" />
             <div>
               <p className="overline">BAIS TNI</p>
               <h1 className="text-2xl font-black tracking-tighter uppercase">Geospasika</h1>
@@ -78,9 +76,7 @@ export default function LoginPage() {
       <div className="flex-1 flex items-center justify-center p-8">
         <div className="w-full max-w-md">
           <div className="md:hidden mb-6 flex items-center gap-3">
-            <div className="w-10 h-10 bg-amber-500 text-zinc-950 flex items-center justify-center">
-              <ShieldStar size={22} weight="fill" />
-            </div>
+            <img src="/logo.png" alt="BAIS TNI" className="w-12 h-12 object-contain rounded-sm" />
             <div>
               <p className="overline">BAIS TNI</p>
               <h1 className="text-xl font-black uppercase tracking-tighter">Geospasika</h1>

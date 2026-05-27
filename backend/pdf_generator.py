@@ -35,6 +35,7 @@ MARGIN = 12 * mm
 
 COLOR_HEADER = HexColor("#0B1220")
 COLOR_AMBER = HexColor("#F59E0B")
+COLOR_AMBER_DARK = HexColor("#B45309")
 COLOR_RED = HexColor("#EF4444")
 COLOR_GREEN = HexColor("#10B981")
 COLOR_BLUE = HexColor("#3B82F6")
@@ -153,17 +154,43 @@ def render_papua_map(items, width_px=900, height_px=700):
         return None
 
 
+import os
+
+LOGO_PATH = os.path.join(os.path.dirname(__file__), "assets", "logo.png")
+_LOGO_IMG = None
+
+def _get_logo():
+    global _LOGO_IMG
+    if _LOGO_IMG is None and os.path.exists(LOGO_PATH):
+        try:
+            _LOGO_IMG = ImageReader(LOGO_PATH)
+        except Exception:
+            _LOGO_IMG = None
+    return _LOGO_IMG
+
+
 # ---------- HEADER / FOOTER ----------
 def _draw_header(c, report_date):
     c.setFillColor(COLOR_HEADER)
     c.rect(0, PAGE_H - 18 * mm, PAGE_W, 18 * mm, stroke=0, fill=1)
     c.setFillColor(COLOR_AMBER)
     c.rect(MARGIN, PAGE_H - 18 * mm, 3 * mm, 18 * mm, stroke=0, fill=1)
+    # logo (top-left, next to amber bar)
+    logo = _get_logo()
+    text_x = MARGIN + 6 * mm
+    if logo:
+        try:
+            logo_size = 14 * mm
+            c.drawImage(logo, MARGIN + 5 * mm, PAGE_H - 16 * mm, width=logo_size, height=logo_size,
+                        mask="auto", preserveAspectRatio=True)
+            text_x = MARGIN + 5 * mm + logo_size + 2 * mm
+        except Exception:
+            pass
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(MARGIN + 6 * mm, PAGE_H - 9 * mm, "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
+    c.drawString(text_x, PAGE_H - 9 * mm, "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
     c.setFont("Helvetica", 7)
-    c.drawString(MARGIN + 6 * mm, PAGE_H - 13.5 * mm, "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
+    c.drawString(text_x, PAGE_H - 13.5 * mm, "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(COLOR_AMBER)
     c.drawRightString(PAGE_W - MARGIN, PAGE_H - 9 * mm, f"Tanggal: {report_date}")
@@ -173,14 +200,14 @@ def _draw_header(c, report_date):
                       f"Dicetak {datetime.now().strftime('%d %b %Y %H:%M')} WIB")
 
 
-def _draw_footer(c, page_num, total=2):
+def _draw_footer(c, page_num):
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.4)
     c.line(MARGIN, 9 * mm, PAGE_W - MARGIN, 9 * mm)
     c.setFillColor(COLOR_MUTED)
     c.setFont("Helvetica", 6.5)
     c.drawString(MARGIN, 5.5 * mm, "DOKUMEN INTERNAL — TIDAK UNTUK DISEBARLUASKAN")
-    c.drawRightString(PAGE_W - MARGIN, 5.5 * mm, f"Hal {page_num} / {total}")
+    c.drawRightString(PAGE_W - MARGIN, 5.5 * mm, f"Hal {page_num}")
 
 
 def _panel_title(c, x, y, w, title, kicker=None, color=COLOR_HEADER):
@@ -804,71 +831,412 @@ def _draw_gal_wide(c, x, y, w, h, data):
             c.drawString(tx + 0.7 * mm, ty + title_h - 1.5 * mm - j * 2.2 * mm, line)
 
 
+# ---------- FULL-DETAIL CARDS (multi-page paginator) ----------
+COG_LABEL = {"aceh": "ACEH", "jakarta": "JAKARTA", "papua": "PAPUA", "internasional": "INTERNASIONAL"}
+
+
+def _draw_lid_card(c, x, y_top, w, item):
+    """Detailed LID card. Returns total height consumed."""
+    pad = 2 * mm
+    cog = item.get("cog", "")
+    cog_color = COG_COLORS.get(cog, COLOR_MUTED)
+    inner_w = w - 2 * pad
+    img_w = 32 * mm if item.get("sentiment_image") else 0
+    text_w = inner_w - (img_w + 2 * mm if img_w else 0)
+
+    # measure text content height
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    link = (item.get("link") or "").strip()
+    link_lines = wrap_to_width(link, "Helvetica", 6, text_w)[:2] if link else []
+
+    blocks = []
+    for key, label in [("fakta", "FAKTA"), ("analisa", "ANALISA"),
+                       ("tindakan", "TINDAKAN SATGAS"), ("rekomendasi", "REKOMENDASI BAIS")]:
+        val = (item.get(key) or "").strip()
+        if val:
+            lines = wrap_to_width(val, "Helvetica", 6.5, text_w)[:4]
+            blocks.append((label, lines))
+
+    # estimate height
+    h = 3 * mm  # top
+    h += 4 * mm  # COG badge + judul row
+    h += 2.5 * mm * len(judul_lines)
+    if link_lines:
+        h += 1 * mm + 2.2 * mm * len(link_lines)
+    for _, lines in blocks:
+        h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
+    h += 2 * mm  # bottom
+    if img_w:
+        h = max(h, img_w * 0.6 + 4 * mm)  # at least image height
+
+    y_bot = y_top - h
+    # background card
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y_bot, w, h, stroke=1, fill=0)
+    # left color stripe
+    c.setFillColor(cog_color)
+    c.rect(x, y_bot, 1.2 * mm, h, stroke=0, fill=1)
+
+    tx = x + pad + 1.5 * mm
+    cy = y_top - 3 * mm
+    # COG badge
+    c.setFillColor(cog_color)
+    c.rect(tx, cy - 3 * mm, 18 * mm, 3 * mm, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(tx + 1 * mm, cy - 3 * mm + 0.9 * mm, COG_LABEL.get(cog, cog.upper()))
+    # judul
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 8)
+    jy = cy - 6.5 * mm
+    for line in judul_lines:
+        c.drawString(tx, jy, line)
+        jy -= 2.7 * mm
+    # link
+    if link_lines:
+        c.setFillColor(COLOR_AMBER_DARK)
+        c.setFont("Helvetica", 6)
+        jy -= 0.5 * mm
+        for line in link_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.2 * mm
+    # blocks
+    for label, lines in blocks:
+        jy -= 0.5 * mm
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, label)
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica", 6.5)
+        for line in lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.3 * mm
+
+    # sentiment image (right side)
+    if img_w:
+        img = decode_image(item.get("sentiment_image"))
+        if img:
+            fit_image(c, img, x + w - pad - img_w, y_bot + 2 * mm, img_w, h - 4 * mm)
+
+    return h
+
+
+def _draw_kontra_card(c, x, y_top, w, item):
+    pad = 2 * mm
+    is_satgas = item.get("sumber") == "to_satgas"
+    badge_color = COLOR_RED if is_satgas else COLOR_BLUE
+    inner_w = w - 2 * pad
+
+    medsos = [m for m in (item.get("medsos") or []) if m]
+    sna_img = decode_image(item.get("sna_image"))
+    lainnya_img = decode_image(item.get("lainnya_image"))
+    has_imgs = bool(sna_img or lainnya_img)
+    img_block_w = 38 * mm if has_imgs else 0
+    text_w = inner_w - (img_block_w + 2 * mm if has_imgs else 0)
+
+    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)[:5]
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    medsos_lines = []
+    for m in medsos[:6]:
+        for ln in wrap_to_width(m, "Helvetica", 6, text_w):
+            medsos_lines.append(ln)
+
+    h = 3 * mm + 4 * mm  # top + badge row
+    h += 0.5 * mm
+    if data_lines:
+        h += 2.8 * mm + 2.3 * mm * len(data_lines) + 0.5 * mm
+    if medsos_lines:
+        h += 2.8 * mm + 2.2 * mm * len(medsos_lines) + 0.5 * mm
+    if ket_lines:
+        h += 2.8 * mm + 2.3 * mm * len(ket_lines) + 0.5 * mm
+    h += 2 * mm
+    if has_imgs:
+        h = max(h, 35 * mm)
+
+    y_bot = y_top - h
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y_bot, w, h, stroke=1, fill=0)
+    c.setFillColor(badge_color)
+    c.rect(x, y_bot, 1.2 * mm, h, stroke=0, fill=1)
+
+    tx = x + pad + 1.5 * mm
+    cy = y_top - 3 * mm
+    # Name + badges
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 9)
+    name = truncate_to_width(item.get("nama_to", "-"), "Helvetica-Bold", 9, text_w * 0.7)
+    c.drawString(tx, cy - 3 * mm, name)
+    c.setFillColor(badge_color)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(tx + stringWidth(name, "Helvetica-Bold", 9) + 3 * mm, cy - 3 * mm,
+                 "[TO SATGAS]" if is_satgas else "[TO INTERNAL]")
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Bold", 5.5)
+    c.drawString(tx + stringWidth(name, "Helvetica-Bold", 9) + 24 * mm, cy - 3 * mm,
+                 (item.get("tipe", "") or "").upper())
+
+    jy = cy - 6 * mm
+    # data_diri
+    if data_lines:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "DATA DIRI")
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica", 6.5)
+        for line in data_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.3 * mm
+        jy -= 0.5 * mm
+    # medsos
+    if medsos_lines:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "LINK MEDIA SOSIAL")
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_AMBER_DARK)
+        c.setFont("Helvetica", 6)
+        for line in medsos_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.2 * mm
+        jy -= 0.5 * mm
+    # keterangan
+    if ket_lines:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "KETERANGAN")
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica", 6.5)
+        for line in ket_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.3 * mm
+
+    # SNA + Lainnya stacked vertically on right
+    if has_imgs:
+        img_x = x + w - pad - img_block_w
+        slot_h = (h - 6 * mm) / (2 if (sna_img and lainnya_img) else 1)
+        slot_y = y_top - 4 * mm
+        if sna_img:
+            c.setFillColor(COLOR_MUTED)
+            c.setFont("Helvetica-Bold", 5)
+            c.drawString(img_x, slot_y, "SNA")
+            fit_image(c, sna_img, img_x, slot_y - slot_h, img_block_w, slot_h - 1.5 * mm)
+            slot_y -= slot_h
+        if lainnya_img:
+            c.setFillColor(COLOR_MUTED)
+            c.setFont("Helvetica-Bold", 5)
+            c.drawString(img_x, slot_y, "LAINNYA")
+            fit_image(c, lainnya_img, img_x, slot_y - slot_h, img_block_w, slot_h - 1.5 * mm)
+
+    return h
+
+
+def _draw_gal_card(c, x, y_top, w, item):
+    pad = 2 * mm
+    cat = (item.get("kategori") or "").upper()
+    cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
+    inner_w = w - 2 * pad
+    img = decode_image(item.get("gambar"))
+    img_w = 40 * mm if img else 0
+    text_w = inner_w - (img_w + 2 * mm if img else 0)
+
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    links = [lk for lk in (item.get("links") or []) if lk]
+    link_lines = []
+    for ln in links[:8]:
+        for w_ln in wrap_to_width(ln, "Helvetica", 6, text_w):
+            link_lines.append(w_ln)
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+
+    h = 3 * mm + 4 * mm
+    h += 2.7 * mm * len(judul_lines) + 0.5 * mm
+    if link_lines:
+        h += 2.6 * mm + 2.2 * mm * len(link_lines) + 0.5 * mm
+    if ket_lines:
+        h += 2.6 * mm + 2.3 * mm * len(ket_lines) + 0.5 * mm
+    h += 2 * mm
+    if img:
+        h = max(h, 32 * mm)
+
+    y_bot = y_top - h
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y_bot, w, h, stroke=1, fill=0)
+    c.setFillColor(cat_color)
+    c.rect(x, y_bot, 1.2 * mm, h, stroke=0, fill=1)
+
+    tx = x + pad + 1.5 * mm
+    cy = y_top - 3 * mm
+    # category badge
+    c.setFillColor(cat_color)
+    c.rect(tx, cy - 3 * mm, 16 * mm, 3 * mm, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(tx + 1 * mm, cy - 3 * mm + 0.9 * mm, cat or "—")
+    # judul
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 8)
+    jy = cy - 6.5 * mm
+    for line in judul_lines:
+        c.drawString(tx, jy, line)
+        jy -= 2.7 * mm
+    # links
+    if link_lines:
+        jy -= 0.3 * mm
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "LINK KONTEN")
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_AMBER_DARK)
+        c.setFont("Helvetica", 6)
+        for line in link_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.2 * mm
+    # keterangan
+    if ket_lines:
+        jy -= 0.3 * mm
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "KETERANGAN")
+        jy -= 2.4 * mm
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica", 6.5)
+        for line in ket_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.3 * mm
+
+    if img:
+        fit_image(c, img, x + w - pad - img_w, y_bot + 2 * mm, img_w, h - 4 * mm)
+
+    return h
+
+
 # ---------- MAIN ----------
 def build_summary_pdf(data, ai_text, ai_html=None):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     rd = data.get("report_date", "")
+    state = {"page": 1, "y": 0}
 
-    # =========== PAGE 1 ===========
+    avail_top = PAGE_H - 18 * mm - 4 * mm
+    avail_bottom = 13 * mm
+    w = PAGE_W - 2 * MARGIN
+
+    def new_page():
+        _draw_footer(c, state["page"])
+        c.showPage()
+        state["page"] += 1
+        _draw_header(c, rd)
+        state["y"] = avail_top
+
+    def ensure_space(needed):
+        if state["y"] - needed < avail_bottom:
+            new_page()
+
+    def section_title(text, count_text=None):
+        ensure_space(7 * mm)
+        bar_h = 5 * mm
+        c.setFillColor(COLOR_HEADER)
+        c.rect(MARGIN, state["y"] - bar_h, w, bar_h, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(MARGIN + 2 * mm, state["y"] - bar_h + 1.4 * mm, text)
+        if count_text:
+            c.setFillColor(COLOR_AMBER)
+            c.setFont("Helvetica-Bold", 6.5)
+            c.drawRightString(MARGIN + w - 2 * mm, state["y"] - bar_h + 1.4 * mm, count_text)
+        state["y"] -= bar_h + 2 * mm
+
+    # =========== PAGE 1: Executive Summary + COG mini tiles ===========
     _draw_header(c, rd)
-
-    # Layout (KPI strip removed per user request — more space for AI summary + COG tiles)
-    body_top = PAGE_H - 18 * mm - 4 * mm
-    body_bottom = 13 * mm
-
     cog_h = 30 * mm
-    cog_y = body_bottom
-
-    sum_top = body_top
+    cog_y = avail_bottom
+    sum_top = avail_top
     sum_bottom = cog_y + cog_h + 4 * mm
     sum_h = sum_top - sum_bottom
-    _draw_executive_summary(c, MARGIN, sum_bottom, PAGE_W - 2 * MARGIN, sum_h, ai_text, data, ai_html=ai_html)
+    _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
 
-    # 4 mini COG tiles row
-    grid_w = PAGE_W - 2 * MARGIN
-    gutter = 3 * mm
-    cog_w = (grid_w - 3 * gutter) / 4
     by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
     for it in data.get("lid", []):
         by_cog.setdefault(it.get("cog", ""), []).append(it)
+    gutter = 3 * mm
+    cog_w = (w - 3 * gutter) / 4
     for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
         cx = MARGIN + i * (cog_w + gutter)
         _draw_cog_mini(c, cx, cog_y, cog_w, cog_h, cog, by_cog.get(cog, []))
 
-    _draw_footer(c, 1)
-    c.showPage()
+    # =========== PAGE 2+: Detail cards (auto-paginated) ===========
+    new_page()
+    state["y"] = avail_top
 
-    # =========== PAGE 2 ===========
-    _draw_header(c, rd)
-    avail_top = PAGE_H - 18 * mm - 4 * mm
-    avail_bottom = 13 * mm
-    avail_h = avail_top - avail_bottom
+    # LID
+    lid_items = data.get("lid", [])
+    section_title("BERITA TRENDING (TIM LID)", f"{len(lid_items)} ITEM")
+    if not lid_items:
+        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada berita.")
+        state["y"] -= 6 * mm
+    else:
+        for it in lid_items:
+            ensure_space(95 * mm)
+            h = _draw_lid_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h + 2 * mm
 
-    # 4 vertical sections stacked, each ~25% of available height
-    section_gap = 2 * mm
-    # 5 vertical sections stacked: LID → KONTRA → GAL → MEDMON → GEOINT
-    section_gap = 2 * mm
-    section_h = (avail_h - 4 * section_gap) / 5
-    w = PAGE_W - 2 * MARGIN
+    state["y"] -= 2 * mm
 
-    # 1. LID berita trending
-    y1 = avail_top - section_h
-    _draw_lid_strip(c, MARGIN, y1, w, section_h, data)
-    # 2. KONTRA profiling
-    y2 = y1 - section_h - section_gap
-    _draw_kontra_with_images(c, MARGIN, y2, w, section_h, data)
-    # 3. GAL konten/narasi/meme (wide)
-    y3 = y2 - section_h - section_gap
-    _draw_gal_wide(c, MARGIN, y3, w, section_h, data)
-    # 4. MEDMON with images
-    y4 = y3 - section_h - section_gap
-    _draw_medmon_with_images(c, MARGIN, y4, w, section_h, data)
-    # 5. GEOINT with auto-map
-    y5 = y4 - section_h - section_gap
-    _draw_geoint_with_map(c, MARGIN, y5, w, section_h, data)
+    # KONTRA
+    kontra_items = data.get("kontra", [])
+    ensure_space(15 * mm)
+    section_title("PROFILING (TIM KONTRA)", f"{len(kontra_items)} TO")
+    if not kontra_items:
+        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada profiling.")
+        state["y"] -= 6 * mm
+    else:
+        for it in kontra_items:
+            ensure_space(95 * mm)
+            h = _draw_kontra_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h + 2 * mm
 
-    _draw_footer(c, 2)
+    state["y"] -= 2 * mm
+
+    # GAL
+    gal_items = data.get("gal", [])
+    ensure_space(15 * mm)
+    section_title("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN")
+    if not gal_items:
+        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada konten.")
+        state["y"] -= 6 * mm
+    else:
+        for it in gal_items:
+            ensure_space(75 * mm)
+            h = _draw_gal_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h + 2 * mm
+
+    state["y"] -= 2 * mm
+
+    # MEDMON (condensed)
+    medmon_h = 55 * mm
+    ensure_space(medmon_h + 8 * mm)
+    section_title("MEDIA MONITORING", f"{len(data.get('medmon', []))} SUBJEK")
+    _draw_medmon_with_images(c, MARGIN, state["y"] - medmon_h, w, medmon_h + 4 * mm, data)
+    state["y"] -= medmon_h + 4 * mm
+
+    state["y"] -= 2 * mm
+
+    # GEOINT with auto-Papua map
+    geo_h = 65 * mm
+    ensure_space(geo_h + 8 * mm)
+    section_title("GEOINT · POSISI OPM", f"{len(data.get('geoint', []))} TITIK")
+    _draw_geoint_with_map(c, MARGIN, state["y"] - geo_h, w, geo_h + 4 * mm, data)
+    state["y"] -= geo_h + 4 * mm
+
+    _draw_footer(c, state["page"])
     c.showPage()
     c.save()
     return buf.getvalue()

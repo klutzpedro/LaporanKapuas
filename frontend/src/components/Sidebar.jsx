@@ -2,7 +2,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { useEffect, useState } from "react";
 import {
-  ShieldStar, House, Newspaper, UserFocus, Megaphone,
+  House, Newspaper, UserFocus, Megaphone,
   ChartLineUp, Crosshair, ClipboardText, FilePdf, SignOut, Users, Archive,
   CaretLeft, CaretRight,
 } from "@phosphor-icons/react";
@@ -57,9 +57,12 @@ export default function Sidebar() {
       {/* Header */}
       <div className="p-5 border-b border-zinc-800 overflow-hidden">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-amber-500 text-zinc-950 flex items-center justify-center shrink-0">
-            <ShieldStar size={20} weight="fill" />
-          </div>
+          <img
+            src="/logo.png"
+            alt="BAIS TNI"
+            className="w-10 h-10 object-contain shrink-0 rounded-sm"
+            data-testid="sidebar-logo"
+          />
           {!collapsed && (
             <div className="min-w-0">
               <p className="text-[9px] tracking-[0.25em] text-zinc-500 font-bold uppercase">BAIS TNI</p>

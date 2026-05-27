@@ -45,6 +45,7 @@ Aplikasi internal BAIS TNI / Satgas Kapuas untuk mengumpulkan input harian dari 
 - **Edit/Update CRUD on all 6 team report lists (PUT endpoints + pencil-icon UI)** — 2026-02
 - **PDF cleanup (2026-02)**: removed "AI · CLAUDE SONNET 4.5 · EDITABLE" kicker, removed KPI count strip (LID/KONTRA/GAL/...), auto-rendered Papua map with OPM coords plotted (replaces user-uploaded peta_image), cleaned overlap labels in MEDMON/KONTRA sections
 - **PDF Page 2 restructure (2026-02)**: 5 stacked sections — LID → PROFILING (TIM KONTRA) → KONTEN / NARASI / MEME (TIM GAL, full-width thumbnails) → MEDMON → GEOINT. PIKET section removed from PDF entirely
+- **Logo BAIS + multi-page detail PDF (2026-02)**: Logo Waskita Satya Nirbhaya di pojok kiri atas (login, sidebar, semua halaman PDF). PDF auto-paginate ke 3+ halaman dengan card detail penuh per item LID (FAKTA/ANALISA/TINDAKAN/REKOMENDASI + link + sentiment image), KONTRA (data diri + LINK MEDIA SOSIAL semua URL + SNA + Lainnya), GAL (kategori + judul + semua LINK KONTEN + keterangan + gambar)
 
 ## Test Results (iteration_1)
 - Backend: 30/31 PASS — 1 failure adalah Emergent LLM budget exceeded (bukan code bug).
