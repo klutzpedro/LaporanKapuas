@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
+import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -23,7 +24,7 @@ export default function TimGal() {
   const { reportDate, periodLabel } = usePeriod();
 
   async function load() {
-    const params = reportDate ? { report_date: reportDate } : {};
+    const params = reportDate ? { report_date: reportDate, fallback_previous: true } : {};
     const { data } = await api.get("/gal", { params });
     setItems(data);
   }
@@ -114,6 +115,7 @@ export default function TimGal() {
         </Card>
 
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="gal-list-card">
+          <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api, COG_LABEL, COG_COLOR } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
+import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +33,7 @@ export default function TimLid() {
   const { reportDate, periodLabel } = usePeriod();
 
   async function load() {
-    const params = reportDate ? { report_date: reportDate } : {};
+    const params = reportDate ? { report_date: reportDate, fallback_previous: true } : {};
     const { data } = await api.get("/lid", { params });
     setItems(data);
   }
@@ -134,6 +135,7 @@ export default function TimLid() {
         </Card>
 
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="lid-list-card">
+          <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
             <ul className="space-y-3">
               {items.map((it) => (

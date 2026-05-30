@@ -252,11 +252,27 @@ async def create_lid(payload: LidIn, user: dict = Depends(require_role("tim_lid"
     return await insert_report("lid_reports", payload.model_dump(), user)
 
 
-@api.get("/lid")
-async def list_lid(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
+async def list_with_fallback(collection: str, report_date: Optional[str], fallback_previous: bool = False):
+    """Return items for the requested report_date. If empty AND fallback_previous=True,
+    return items for the most recent earlier date that has data."""
     q = {"report_date": report_date} if report_date else {}
-    cur = db.lid_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+    cur = db[collection].find(q).sort("created_at", -1)
+    items = [_serialize(d) async for d in cur]
+    if items or not (report_date and fallback_previous):
+        return items
+    # find most recent earlier date with data
+    prev = await db[collection].find_one({"report_date": {"$lt": report_date}}, sort=[("report_date", -1)])
+    if not prev:
+        return []
+    prev_date = prev.get("report_date")
+    cur2 = db[collection].find({"report_date": prev_date}).sort("created_at", -1)
+    return [_serialize(d) async for d in cur2]
+
+
+@api.get("/lid")
+async def list_lid(report_date: Optional[str] = None, fallback_previous: bool = False,
+                   _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("lid_reports", report_date, fallback_previous)
 
 
 @api.put("/lid/{rid}")
@@ -288,10 +304,9 @@ async def create_kontra(payload: KontraIn, user: dict = Depends(require_role("ti
 
 
 @api.get("/kontra")
-async def list_kontra(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
-    q = {"report_date": report_date} if report_date else {}
-    cur = db.kontra_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+async def list_kontra(report_date: Optional[str] = None, fallback_previous: bool = False,
+                     _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("kontra_reports", report_date, fallback_previous)
 
 
 @api.put("/kontra/{rid}")
@@ -320,10 +335,9 @@ async def create_gal(payload: GalIn, user: dict = Depends(require_role("tim_gal"
 
 
 @api.get("/gal")
-async def list_gal(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
-    q = {"report_date": report_date} if report_date else {}
-    cur = db.gal_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+async def list_gal(report_date: Optional[str] = None, fallback_previous: bool = False,
+                   _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("gal_reports", report_date, fallback_previous)
 
 
 @api.put("/gal/{rid}")
@@ -362,10 +376,9 @@ async def create_medmon(payload: MedmonIn, user: dict = Depends(require_role("ti
 
 
 @api.get("/medmon")
-async def list_medmon(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
-    q = {"report_date": report_date} if report_date else {}
-    cur = db.medmon_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+async def list_medmon(report_date: Optional[str] = None, fallback_previous: bool = False,
+                     _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("medmon_reports", report_date, fallback_previous)
 
 
 @api.put("/medmon/{rid}")
@@ -397,10 +410,9 @@ async def create_geoint(payload: GeointIn, user: dict = Depends(require_role("ti
 
 
 @api.get("/geoint")
-async def list_geoint(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
-    q = {"report_date": report_date} if report_date else {}
-    cur = db.geoint_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+async def list_geoint(report_date: Optional[str] = None, fallback_previous: bool = False,
+                     _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("geoint_reports", report_date, fallback_previous)
 
 
 @api.put("/geoint/{rid}")
@@ -428,10 +440,9 @@ async def create_piket(payload: PiketIn, user: dict = Depends(require_role("pike
 
 
 @api.get("/piket")
-async def list_piket(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
-    q = {"report_date": report_date} if report_date else {}
-    cur = db.piket_reports.find(q).sort("created_at", -1)
-    return [_serialize(d) async for d in cur]
+async def list_piket(report_date: Optional[str] = None, fallback_previous: bool = False,
+                    _user: dict = Depends(get_current_user)):
+    return await list_with_fallback("piket_reports", report_date, fallback_previous)
 
 
 @api.put("/piket/{rid}")

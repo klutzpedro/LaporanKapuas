@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
+import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -40,7 +41,7 @@ export default function TimGeoint() {
   const { reportDate, periodLabel } = usePeriod();
 
   async function load() {
-    const params = reportDate ? { report_date: reportDate } : {};
+    const params = reportDate ? { report_date: reportDate, fallback_previous: true } : {};
     const { data } = await api.get("/geoint", { params });
     setItems(data);
   }
@@ -152,6 +153,7 @@ export default function TimGeoint() {
 
           <div className="mt-4">
             <h4 className="overline mb-2">Daftar Laporan Hari Ini</h4>
+            <PreviousPeriodBanner items={items} currentDate={reportDate} />
             {items.length === 0 ? <Empty /> : (
               <table className="w-full text-xs">
                 <thead><tr className="overline text-left"><th className="pb-2">Wilayah</th><th className="pb-2">Nama</th><th className="pb-2">Status</th><th className="pb-2">Koordinat</th><th></th></tr></thead>
