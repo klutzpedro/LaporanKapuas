@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
+import { SentimentInput } from "@/components/SentimentInput";
 import { toast } from "sonner";
 import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
@@ -16,8 +17,10 @@ const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500
 const EMPTY = {
   subjek: "Presiden",
   berita: [{ judul: "", link: "", sentiment: "positif" }],
-  pie_sentiment_image: null,
   chart_sumber_image: null,
+  sentiment_positif: 0,
+  sentiment_negatif: 0,
+  sentiment_netral: 0,
   analisa: "",
   rekomendasi: "",
 };
@@ -45,8 +48,10 @@ export default function TimMedmon() {
     setForm({
       subjek: it.subjek || "Presiden",
       berita: (it.berita && it.berita.length) ? it.berita : [{ judul: "", link: "", sentiment: "positif" }],
-      pie_sentiment_image: it.pie_sentiment_image || null,
       chart_sumber_image: it.chart_sumber_image || null,
+      sentiment_positif: it.sentiment_positif || 0,
+      sentiment_negatif: it.sentiment_negatif || 0,
+      sentiment_netral: it.sentiment_netral || 0,
       analisa: it.analisa || "",
       rekomendasi: it.rekomendasi || "",
     });
@@ -55,7 +60,13 @@ export default function TimMedmon() {
   function cancelEdit() { setEditId(null); setForm(EMPTY); }
 
   async function submit(e) {
-    e.preventDefault(); setBusy(true);
+    e.preventDefault();
+    const total = (form.sentiment_positif || 0) + (form.sentiment_negatif || 0) + (form.sentiment_netral || 0);
+    if (total !== 100) {
+      toast.error(`Total sentiment harus 100% (sekarang ${total}%).`);
+      return;
+    }
+    setBusy(true);
     try {
       const payload = { ...form, berita: form.berita.filter((b) => b.judul && b.link) };
       if (editId) {
@@ -117,7 +128,11 @@ export default function TimMedmon() {
               </div>
             </div>
 
-            <ImageUploader label="Pie Chart Sentiment" value={form.pie_sentiment_image} onChange={(v) => set("pie_sentiment_image", v)} testid="medmon-pie" />
+            <SentimentInput
+              value={{ positif: form.sentiment_positif, negatif: form.sentiment_negatif, netral: form.sentiment_netral }}
+              onChange={(v) => setForm((f) => ({ ...f, sentiment_positif: v.positif, sentiment_negatif: v.negatif, sentiment_netral: v.netral }))}
+              testid="medmon-sentiment"
+            />
             <ImageUploader label="Chart Sumber Berita" value={form.chart_sumber_image} onChange={(v) => set("chart_sumber_image", v)} testid="medmon-chart-sumber" />
             <Field label="Analisa"><Textarea data-testid="medmon-analisa" value={form.analisa} onChange={(e) => set("analisa", e.target.value)} className={INP} rows={3} /></Field>
             <Field label="Rekomendasi"><Textarea data-testid="medmon-rekomendasi" value={form.rekomendasi} onChange={(e) => set("rekomendasi", e.target.value)} className={INP} rows={2} /></Field>

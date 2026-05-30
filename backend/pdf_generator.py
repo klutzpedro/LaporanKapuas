@@ -193,13 +193,13 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
                 "n": it.get("sentiment_negatif") or 0,
                 "u": it.get("sentiment_netral") or 0,
             })
-    for it in data.get("geoint", []):
+    for it in data.get("medmon", []):
         if _has_sentiment(it):
             cases.append({
-                "kind": "GEOINT",
-                "kind_color": COLOR_RED if it.get("status") == "aktif" else COLOR_GREEN,
-                "label": (it.get("status") or "").upper().replace("_", " "),
-                "title": f"OPM · {it.get('nama_orang', '-')} ({it.get('wilayah','-')})",
+                "kind": "MEDMON",
+                "kind_color": COLOR_PURPLE,
+                "label": (it.get("subjek") or "").upper()[:14],
+                "title": f"Media Monitoring · {it.get('subjek','-')}",
                 "p": it.get("sentiment_positif") or 0,
                 "n": it.get("sentiment_negatif") or 0,
                 "u": it.get("sentiment_netral") or 0,
@@ -781,12 +781,17 @@ def _draw_medmon_with_images(c, x, y, w, h, data):
         for ln in wrap_to_width(it.get("analisa", ""), "Helvetica", 6, text_col_w)[:3]:
             c.drawString(x + 2 * mm, line_y, ln)
             line_y -= 2.3 * mm
-        # pie chart image
+        # auto pie chart from MEDMON sentiment percentages
         img_w = w * 0.27
         pie_x = x + w * 0.43
-        img = decode_image(it.get("pie_sentiment_image"))
-        if img:
-            fit_image(c, img, pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm)
+        if _has_sentiment(it):
+            pie_r = min(img_w - 4 * mm, row_h - 4 * mm) / 2
+            pie_cx = pie_x + img_w / 2
+            pie_cy = ry + row_h / 2
+            draw_sentiment_pie(c, pie_cx, pie_cy, pie_r,
+                               it.get("sentiment_positif"),
+                               it.get("sentiment_negatif"),
+                               it.get("sentiment_netral"))
         else:
             c.setFillColor(COLOR_LIGHT)
             c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)

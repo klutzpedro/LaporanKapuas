@@ -347,8 +347,10 @@ class MedmonItem(BaseModel):
 class MedmonIn(BaseModel):
     subjek: str  # "Presiden", "Panglima TNI", "MBG", or custom
     berita: List[MedmonItem] = Field(default_factory=list)
-    pie_sentiment_image: Optional[str] = None
     chart_sumber_image: Optional[str] = None
+    sentiment_positif: int = 0
+    sentiment_negatif: int = 0
+    sentiment_netral: int = 0
     analisa: str = ""
     rekomendasi: str = ""
 
@@ -387,9 +389,6 @@ class GeointIn(BaseModel):
     peta_image: Optional[str] = None
     status: Literal["aktif", "tidak_aktif"]
     keterangan: str = ""
-    sentiment_positif: int = 0
-    sentiment_negatif: int = 0
-    sentiment_netral: int = 0
 
 
 @api.post("/geoint")
