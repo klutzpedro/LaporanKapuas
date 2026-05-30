@@ -563,9 +563,10 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
     pdf_bytes = build_summary_pdf(data, ai_text, ai_html=ai_html)
     filename = f"BAIS_Summary_{rd}.pdf"
 
-    # Persist to history (generated_reports)
+    # Persist to history (generated_reports) — keep only the LATEST per report_date
     import base64 as _b64
     counts = {k: len(data.get(k, [])) for k in ["lid", "kontra", "gal", "medmon", "geoint", "piket"]}
+    await db.generated_reports.delete_many({"report_date": rd})
     await db.generated_reports.insert_one({
         "report_date": rd,
         "generated_at": datetime.now(timezone.utc).isoformat(),
