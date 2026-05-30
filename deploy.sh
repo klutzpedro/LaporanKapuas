@@ -23,10 +23,12 @@ pip install -r requirements.txt --extra-index-url https://d33sy5i8bnduwe.cloudfr
 deactivate
 
 echo "🔐 [10/16] Write backend .env..."
+JWT_SECRET=$(openssl rand -hex 32)
 cat > "$APP_DIR/backend/.env" <<EOF
 MONGO_URL=mongodb://localhost:27017
 DB_NAME=bais_geospasika
 EMERGENT_LLM_KEY=$LLM_KEY
+JWT_SECRET=$JWT_SECRET
 EOF
 chmod 600 "$APP_DIR/backend/.env"
 
