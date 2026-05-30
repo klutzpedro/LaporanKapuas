@@ -47,6 +47,7 @@ Aplikasi internal BAIS TNI / Satgas Kapuas untuk mengumpulkan input harian dari 
 - **PDF Page 2 restructure (2026-02)**: 5 stacked sections — LID → PROFILING (TIM KONTRA) → KONTEN / NARASI / MEME (TIM GAL, full-width thumbnails) → MEDMON → GEOINT. PIKET section removed from PDF entirely
 - **Logo BAIS + multi-page detail PDF (2026-02)**: Logo Waskita Satya Nirbhaya di pojok kiri atas (login, sidebar, semua halaman PDF). PDF auto-paginate ke 3+ halaman dengan card detail penuh per item LID (FAKTA/ANALISA/TINDAKAN/REKOMENDASI + link + sentiment image), KONTRA (data diri + LINK MEDIA SOSIAL semua URL + SNA + Lainnya), GAL (kategori + judul + semua LINK KONTEN + keterangan + gambar)
 - **Sentiment Auto Pie Chart (2026-02)**: LID & GEOINT form pakai input 3 persen (positif/negatif/netral), validation total harus 100%. Live SVG pie preview di form. PDF generate pie chart otomatis (ReportLab native, no extra deps). Page 1 PDF tambah "RINGKASAN SENTIMENT PER KASUS" — list semua case dengan mini pie chart per kasus. Gambar sentiment manual dihapus dari LID
+- **VPS Self-Hosted Deployment (2026-05)**: Aplikasi production di VPS 187.77.115.220 (Ubuntu 22.04). Stack: Python 3.11 venv + uvicorn workers 2, MongoDB 7, Nginx reverse proxy, Supervisor. Script `deploy.sh` di root repo untuk redeploy. JWT_SECRET auto-generated. Seed users idempotent (race-safe upsert) untuk multi-worker
 
 ## Test Results (iteration_1)
 - Backend: 30/31 PASS — 1 failure adalah Emergent LLM budget exceeded (bukan code bug).
