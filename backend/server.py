@@ -687,22 +687,27 @@ async def startup():
         ("geoint@bais.tni.mil.id", "Geoint2026!", "Tim Geoint", "tim_geoint"),
     ]
     for email, pwd, name, role in seed_users:
+        # Atomic upsert (race-safe for multi-worker startup)
+        await db.users.update_one(
+            {"email": email},
+            {
+                "$setOnInsert": {
+                    "email": email,
+                    "password_hash": hash_password(pwd),
+                    "name": name,
+                    "role": role,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                }
+            },
+            upsert=True,
+        )
+        # Re-sync password if changed via env
         existing = await db.users.find_one({"email": email})
-        if not existing:
-            await db.users.insert_one({
-                "email": email,
-                "password_hash": hash_password(pwd),
-                "name": name,
-                "role": role,
-                "created_at": datetime.now(timezone.utc).isoformat(),
-            })
-        else:
-            # keep password in sync with env-provided values
-            if not verify_password(pwd, existing["password_hash"]):
-                await db.users.update_one(
-                    {"_id": existing["_id"]},
-                    {"$set": {"password_hash": hash_password(pwd)}},
-                )
+        if existing and not verify_password(pwd, existing["password_hash"]):
+            await db.users.update_one(
+                {"_id": existing["_id"]},
+                {"$set": {"password_hash": hash_password(pwd)}},
+            )
     logger.info("Startup complete. Users seeded.")
 
 
