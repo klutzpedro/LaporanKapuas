@@ -33,7 +33,7 @@ export default function Dashboard() {
   const counts = {};
   TEAMS.forEach((t) => { counts[t.key] = data?.[t.key]?.length || 0; });
 
-  const lidByCog = { aceh: [], jakarta: [], papua: [], internasional: [] };
+  const lidByCog = { aceh: [], jakarta: [], indonesia: [], papua: [], internasional: [] };
   (data?.lid || []).forEach((it) => { if (lidByCog[it.cog]) lidByCog[it.cog].push(it); });
 
   return (

@@ -35,7 +35,7 @@ db = client[os.environ["DB_NAME"]]
 JWT_ALGORITHM = "HS256"
 WIB = timezone(timedelta(hours=7))
 ALLOWED_ROLES = {"admin", "piket", "tim_lid", "tim_kontra", "tim_gal", "tim_medmon", "tim_geoint"}
-COG_CHOICES = {"aceh", "jakarta", "papua", "internasional"}
+COG_CHOICES = {"aceh", "jakarta", "indonesia", "papua", "internasional"}
 
 app = FastAPI(title="BAIS Summary Geospasika")
 api = APIRouter(prefix="/api")
@@ -235,7 +235,7 @@ async def update_report(collection: str, rid: str, data: dict, user: dict) -> di
 # 4 berita trending: 3 COG + 1 Internasional
 # Fields: cog, judul, link, fakta, analisa, tindakan, rekomendasi, sentiment_image (base64)
 class LidIn(BaseModel):
-    cog: Literal["aceh", "jakarta", "papua", "internasional"]
+    cog: Literal["aceh", "jakarta", "indonesia", "papua", "internasional"]
     judul: str
     link: str
     fakta: str

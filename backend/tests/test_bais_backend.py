@@ -95,7 +95,7 @@ class TestAuth:
 class TestLid:
     created_ids: list[str] = []
 
-    @pytest.mark.parametrize("cog", ["aceh", "jakarta", "papua", "internasional"])
+    @pytest.mark.parametrize("cog", ["aceh", "jakarta", "indonesia", "papua", "internasional"])
     def test_create_lid_all_cogs(self, tokens, cog):
         payload = {
             "cog": cog,

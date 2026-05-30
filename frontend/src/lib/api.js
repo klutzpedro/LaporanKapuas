@@ -38,6 +38,7 @@ export const ROLE_LABEL = {
 export const COG_LABEL = {
   aceh: "ACEH",
   jakarta: "JAKARTA",
+  indonesia: "INDONESIA",
   papua: "PAPUA",
   internasional: "INTERNASIONAL",
 };
@@ -45,6 +46,7 @@ export const COG_LABEL = {
 export const COG_COLOR = {
   aceh: "#10B981",
   jakarta: "#3B82F6",
+  indonesia: "#DC2626",
   papua: "#F59E0B",
   internasional: "#8B5CF6",
 };

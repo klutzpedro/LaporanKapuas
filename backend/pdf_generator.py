@@ -52,6 +52,7 @@ COLOR_LIGHT = HexColor("#F8FAFC")
 COG_COLORS = {
     "aceh": COLOR_GREEN,
     "jakarta": COLOR_BLUE,
+    "indonesia": COLOR_RED,
     "papua": COLOR_AMBER,
     "internasional": COLOR_PURPLE,
 }
@@ -587,11 +588,12 @@ def _fallback_summary(data):
     parts = ["RINGKASAN EKSEKUTIF:",
              "Laporan harian berdasarkan input seluruh tim operasional.",
              ""]
-    by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
+    by_cog = {"aceh": [], "jakarta": [], "indonesia": [], "papua": [], "internasional": []}
     for it in data.get("lid", []):
         by_cog.setdefault(it.get("cog", ""), []).append(it)
     for cog_key, label in [("aceh", "1. ACEH"), ("jakarta", "2. JAKARTA"),
-                           ("papua", "3. PAPUA"), ("internasional", "4. INTERNASIONAL")]:
+                           ("indonesia", "3. INDONESIA"),
+                           ("papua", "4. PAPUA"), ("internasional", "5. INTERNASIONAL")]:
         parts.append(label + ":")
         items = by_cog.get(cog_key, [])
         if items:
@@ -703,15 +705,15 @@ def _draw_lid_strip(c, x, y, w, h, data):
         _empty(c, x, cy - 1 * mm, "Tidak ada berita.")
         return
 
-    # 4 mini cards horizontal (Aceh, Jakarta, Papua, Internasional)
-    by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
+    # 5 mini cards horizontal (Aceh, Jakarta, Indonesia, Papua, Internasional)
+    by_cog = {"aceh": [], "jakarta": [], "indonesia": [], "papua": [], "internasional": []}
     for it in items:
         by_cog.setdefault(it.get("cog", ""), []).append(it)
 
     bottom = y + 2 * mm
-    col_w = (w - 6 * mm) / 4
+    col_w = (w - 7 * mm) / 5
 
-    for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
+    for i, cog in enumerate(["aceh", "jakarta", "indonesia", "papua", "internasional"]):
         col_x = x + 1.5 * mm + i * (col_w + 0.5 * mm)
         color = COG_COLORS[cog]
         # COG badge
@@ -972,7 +974,7 @@ def _draw_gal_wide(c, x, y, w, h, data):
 
 
 # ---------- FULL-DETAIL CARDS (multi-page paginator) ----------
-COG_LABEL = {"aceh": "ACEH", "jakarta": "JAKARTA", "papua": "PAPUA", "internasional": "INTERNASIONAL"}
+COG_LABEL = {"aceh": "ACEH", "jakarta": "JAKARTA", "indonesia": "INDONESIA", "papua": "PAPUA", "internasional": "INTERNASIONAL"}
 
 
 def _has_sentiment(item):
