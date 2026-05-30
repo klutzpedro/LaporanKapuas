@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
+import { SentimentInput } from "@/components/SentimentInput";
 import { toast } from "sonner";
 import { Trash, PencilSimple, X } from "@phosphor-icons/react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
@@ -30,6 +31,7 @@ const greenIcon = new L.Icon({
 const EMPTY = {
   wilayah: "", nama_orang: "", no_hp: "", lat: -4.27, lon: 138.08,
   peta_image: null, status: "aktif", keterangan: "",
+  sentiment_positif: 0, sentiment_negatif: 0, sentiment_netral: 0,
 };
 
 export default function TimGeoint() {
@@ -58,13 +60,22 @@ export default function TimGeoint() {
       peta_image: it.peta_image || null,
       status: it.status || "aktif",
       keterangan: it.keterangan || "",
+      sentiment_positif: it.sentiment_positif || 0,
+      sentiment_negatif: it.sentiment_negatif || 0,
+      sentiment_netral: it.sentiment_netral || 0,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
   function cancelEdit() { setEditId(null); setForm(EMPTY); }
 
   async function submit(e) {
-    e.preventDefault(); setBusy(true);
+    e.preventDefault();
+    const total = (form.sentiment_positif || 0) + (form.sentiment_negatif || 0) + (form.sentiment_netral || 0);
+    if (total !== 100) {
+      toast.error(`Total sentiment harus 100% (sekarang ${total}%).`);
+      return;
+    }
+    setBusy(true);
     try {
       const payload = { ...form, lat: parseFloat(form.lat), lon: parseFloat(form.lon) };
       if (editId) {
@@ -110,6 +121,11 @@ export default function TimGeoint() {
             </Field>
             <ImageUploader label="Gambar Peta" value={form.peta_image} onChange={(v) => set("peta_image", v)} testid="geoint-peta" />
             <Field label="Keterangan"><Textarea data-testid="geoint-ket" value={form.keterangan} onChange={(e) => set("keterangan", e.target.value)} className={INP} rows={2} /></Field>
+            <SentimentInput
+              value={{ positif: form.sentiment_positif, negatif: form.sentiment_negatif, netral: form.sentiment_netral }}
+              onChange={(v) => setForm((f) => ({ ...f, sentiment_positif: v.positif, sentiment_negatif: v.negatif, sentiment_netral: v.netral }))}
+              testid="geoint-sentiment"
+            />
 
             <div className="flex gap-2">
               <Button type="submit" disabled={busy} data-testid="geoint-submit" className="flex-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">

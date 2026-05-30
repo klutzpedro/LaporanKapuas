@@ -30,6 +30,9 @@ try:
 except Exception:
     _HAS_STATICMAP = False
 
+from reportlab.graphics.shapes import Drawing, Wedge, String, Circle
+from reportlab.graphics import renderPDF
+
 PAGE_W, PAGE_H = A4
 MARGIN = 12 * mm
 
@@ -103,6 +106,52 @@ def decode_image(data_url):
         return None
 
 
+def draw_sentiment_pie(c, cx, cy, radius, positif, negatif, netral, show_label=True):
+    """Draw a donut-style sentiment pie chart at (cx, cy) with given radius (points)."""
+    from math import cos, sin, radians
+    total = max(1, (positif or 0) + (negatif or 0) + (netral or 0))
+    segments = [
+        ((positif or 0), COLOR_GREEN),
+        ((negatif or 0), COLOR_RED),
+        ((netral or 0), HexColor("#A1A1AA")),
+    ]
+    angle_start = 90.0
+    for value, color in segments:
+        if value <= 0:
+            continue
+        sweep = -(value / total) * 360.0
+        c.setFillColor(color)
+        c.setStrokeColor(HexColor("#0A0A0A"))
+        c.setLineWidth(0.4)
+        path = c.beginPath()
+        path.moveTo(cx, cy)
+        steps = max(8, int(abs(sweep) / 5))
+        ang = angle_start
+        path.lineTo(cx + radius * cos(radians(ang)), cy + radius * sin(radians(ang)))
+        for i in range(1, steps + 1):
+            ang = angle_start + sweep * (i / steps)
+            path.lineTo(cx + radius * cos(radians(ang)), cy + radius * sin(radians(ang)))
+        path.close()
+        c.drawPath(path, stroke=1, fill=1)
+        angle_start += sweep
+    # donut hole
+    c.setFillColor(HexColor("#0A0A0A"))
+    c.setStrokeColor(HexColor("#0A0A0A"))
+    c.circle(cx, cy, radius * 0.55, stroke=0, fill=1)
+    if show_label:
+        parts = [("POS", positif or 0, COLOR_GREEN),
+                 ("NEG", negatif or 0, COLOR_RED),
+                 ("NET", netral or 0, HexColor("#A1A1AA"))]
+        top = max(parts, key=lambda p: p[1])
+        c.setFillColor(top[2])
+        c.setFont("Helvetica-Bold", radius * 0.45)
+        c.drawCentredString(cx, cy - radius * 0.12, f"{top[1]}%")
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", radius * 0.2)
+        c.drawCentredString(cx, cy - radius * 0.36, top[0])
+
+
+
 def fit_image(c, img, x, y, max_w, max_h):
     """Draw image inside box (x,y) with max_w/max_h, preserving aspect ratio, centered."""
     if not img:
@@ -118,6 +167,97 @@ def fit_image(c, img, x, y, max_w, max_h):
         c.drawImage(img, cx, cy, width=w, height=h, mask="auto", preserveAspectRatio=True)
     except Exception:
         pass
+
+
+def _draw_sentiment_cases_strip(c, x, y, w, h, data):
+    """Draw a strip of sentiment cases (LID + GEOINT) — each case shown as a small card with mini pie + label.
+    y, x, w, h are the bounding box (h is total height)."""
+    # Title bar
+    bar_h = 5 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(x, y + h - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x + 2 * mm, y + h - bar_h + 1.4 * mm, "RINGKASAN SENTIMENT PER KASUS")
+    # collect cases
+    cases = []
+    for it in data.get("lid", []):
+        if _has_sentiment(it):
+            cases.append({
+                "kind": "LID",
+                "kind_color": COG_COLORS.get(it.get("cog", ""), COLOR_MUTED),
+                "label": (it.get("cog") or "").upper(),
+                "title": it.get("judul", "—"),
+                "p": it.get("sentiment_positif") or 0,
+                "n": it.get("sentiment_negatif") or 0,
+                "u": it.get("sentiment_netral") or 0,
+            })
+    for it in data.get("geoint", []):
+        if _has_sentiment(it):
+            cases.append({
+                "kind": "GEOINT",
+                "kind_color": COLOR_RED if it.get("status") == "aktif" else COLOR_GREEN,
+                "label": (it.get("status") or "").upper().replace("_", " "),
+                "title": f"OPM · {it.get('nama_orang', '-')} ({it.get('wilayah','-')})",
+                "p": it.get("sentiment_positif") or 0,
+                "n": it.get("sentiment_negatif") or 0,
+                "u": it.get("sentiment_netral") or 0,
+            })
+
+    body_top = y + h - bar_h - 2 * mm
+    body_h = body_top - y - 1 * mm
+    if not cases:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(x + 2 * mm, body_top - 4 * mm, "Belum ada kasus dengan data sentiment.")
+        return
+
+    # Layout: up to 6 cards in a horizontal grid (responsive col count)
+    n = len(cases)
+    cols = min(n, 6)
+    if n > 6:
+        cols = 6
+        cases = cases[:6]
+    gutter = 2 * mm
+    cw = (w - (cols + 1) * gutter) / cols
+    ch = body_h - 2 * mm
+    for i, case in enumerate(cases):
+        cx = x + gutter + i * (cw + gutter)
+        cy = y + 1 * mm
+        # card border
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.4)
+        c.rect(cx, cy, cw, ch, stroke=1, fill=0)
+        # left color stripe
+        c.setFillColor(case["kind_color"])
+        c.rect(cx, cy, 1 * mm, ch, stroke=0, fill=1)
+        # kind badge top
+        c.setFillColor(case["kind_color"])
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(cx + 2 * mm, cy + ch - 3 * mm, f"{case['kind']} · {case['label']}")
+        # title (2 lines max)
+        c.setFillColor(COLOR_HEADER)
+        c.setFont("Helvetica-Bold", 6.5)
+        lines = wrap_to_width(case["title"], "Helvetica-Bold", 6.5, cw - 3 * mm)[:2]
+        ty = cy + ch - 5.5 * mm
+        for line in lines:
+            c.drawString(cx + 2 * mm, ty, line)
+            ty -= 2.3 * mm
+        # pie chart centered horizontally below
+        pie_area_h = (ty - cy) - 5 * mm
+        pie_r = max(6 * mm, min(cw / 2 - 3 * mm, pie_area_h / 2 - 1 * mm))
+        pie_cx = cx + cw / 2
+        pie_cy = cy + 5 * mm + pie_r
+        draw_sentiment_pie(c, pie_cx, pie_cy, pie_r, case["p"], case["n"], case["u"])
+        # tiny legend at bottom
+        c.setFont("Helvetica", 5)
+        legend_y = cy + 1.5 * mm
+        c.setFillColor(COLOR_GREEN)
+        c.drawString(cx + 2 * mm, legend_y, f"+{case['p']}%")
+        c.setFillColor(COLOR_RED)
+        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.34, legend_y, f"-{case['n']}%")
+        c.setFillColor(HexColor("#71717A"))
+        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.67, legend_y, f"~{case['u']}%")
 
 
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
@@ -835,10 +975,17 @@ def _draw_gal_wide(c, x, y, w, h, data):
 COG_LABEL = {"aceh": "ACEH", "jakarta": "JAKARTA", "papua": "PAPUA", "internasional": "INTERNASIONAL"}
 
 
+def _has_sentiment(item):
+    return ((item.get("sentiment_positif") or 0)
+            + (item.get("sentiment_negatif") or 0)
+            + (item.get("sentiment_netral") or 0)) > 0
+
+
 def _measure_lid_card(item, w):
     pad = 2 * mm
     inner_w = w - 2 * pad
-    img_w = 32 * mm if item.get("sentiment_image") else 0
+    has_pie = _has_sentiment(item)
+    img_w = 32 * mm if has_pie else 0
     text_w = inner_w - (img_w + 2 * mm if img_w else 0)
     judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
     link = (item.get("link") or "").strip()
@@ -915,12 +1062,12 @@ def _measure_gal_card(item, w):
 
 
 def _draw_lid_card(c, x, y_top, w, item):
-    """Detailed LID card. Returns total height consumed."""
     pad = 2 * mm
     cog = item.get("cog", "")
     cog_color = COG_COLORS.get(cog, COLOR_MUTED)
     inner_w = w - 2 * pad
-    img_w = 32 * mm if item.get("sentiment_image") else 0
+    has_pie = _has_sentiment(item)
+    img_w = 32 * mm if has_pie else 0
     text_w = inner_w - (img_w + 2 * mm if img_w else 0)
 
     # measure text content height
@@ -993,11 +1140,15 @@ def _draw_lid_card(c, x, y_top, w, item):
             c.drawString(tx, jy, line)
             jy -= 2.3 * mm
 
-    # sentiment image (right side)
+    # sentiment pie (right side)
     if img_w:
-        img = decode_image(item.get("sentiment_image"))
-        if img:
-            fit_image(c, img, x + w - pad - img_w, y_bot + 2 * mm, img_w, h - 4 * mm)
+        pie_radius = min(img_w, h - 4 * mm) / 2 - 2 * mm
+        pie_cx = x + w - pad - img_w / 2
+        pie_cy = y_bot + h / 2
+        draw_sentiment_pie(c, pie_cx, pie_cy, pie_radius,
+                           item.get("sentiment_positif"),
+                           item.get("sentiment_negatif"),
+                           item.get("sentiment_netral"))
 
     return h
 
@@ -1230,23 +1381,15 @@ def build_summary_pdf(data, ai_text, ai_html=None):
             c.drawRightString(MARGIN + w - 2 * mm, state["y"] - bar_h + 1.4 * mm, count_text)
         state["y"] -= bar_h + 2 * mm
 
-    # =========== PAGE 1: Executive Summary + COG mini tiles ===========
+    # =========== PAGE 1: Executive Summary + Sentiment Cases Strip ===========
     _draw_header(c, rd)
-    cog_h = 30 * mm
-    cog_y = avail_bottom
+    cases_h = 50 * mm  # bottom strip for sentiment cases
+    cases_y = avail_bottom
     sum_top = avail_top
-    sum_bottom = cog_y + cog_h + 4 * mm
+    sum_bottom = cases_y + cases_h + 4 * mm
     sum_h = sum_top - sum_bottom
     _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
-
-    by_cog = {"aceh": [], "jakarta": [], "papua": [], "internasional": []}
-    for it in data.get("lid", []):
-        by_cog.setdefault(it.get("cog", ""), []).append(it)
-    gutter = 3 * mm
-    cog_w = (w - 3 * gutter) / 4
-    for i, cog in enumerate(["aceh", "jakarta", "papua", "internasional"]):
-        cx = MARGIN + i * (cog_w + gutter)
-        _draw_cog_mini(c, cx, cog_y, cog_w, cog_h, cog, by_cog.get(cog, []))
+    _draw_sentiment_cases_strip(c, MARGIN, cases_y, w, cases_h, data)
 
     # =========== PAGE 2+: Detail cards (auto-paginated) ===========
     new_page()

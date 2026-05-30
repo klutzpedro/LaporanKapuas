@@ -242,8 +242,9 @@ class LidIn(BaseModel):
     analisa: str
     tindakan: str
     rekomendasi: str
-    sentiment_image: Optional[str] = None  # base64 data URL
-    sentiment_label: Optional[str] = None  # positive/negative/neutral
+    sentiment_positif: int = 0
+    sentiment_negatif: int = 0
+    sentiment_netral: int = 0
 
 
 @api.post("/lid")
@@ -386,6 +387,9 @@ class GeointIn(BaseModel):
     peta_image: Optional[str] = None
     status: Literal["aktif", "tidak_aktif"]
     keterangan: str = ""
+    sentiment_positif: int = 0
+    sentiment_negatif: int = 0
+    sentiment_netral: int = 0
 
 
 @api.post("/geoint")
