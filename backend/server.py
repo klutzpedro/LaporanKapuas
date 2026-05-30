@@ -624,6 +624,17 @@ async def reports_history(
     async for d in cur:
         d["id"] = str(d["_id"])
         del d["_id"]
+        # Compute team attendance for this report_date
+        rd = d.get("report_date")
+        attendance = {}
+        team_cols = {
+            "lid": "lid_reports", "kontra": "kontra_reports", "gal": "gal_reports",
+            "medmon": "medmon_reports", "geoint": "geoint_reports", "piket": "piket_reports",
+        }
+        for key, col in team_cols.items():
+            n = await db[col].count_documents({"report_date": rd}) if rd else 0
+            attendance[key] = n
+        d["attendance"] = attendance
         out.append(d)
     return out
 

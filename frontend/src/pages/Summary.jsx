@@ -4,7 +4,7 @@ import { PageHeader, Card } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FilePdf, Robot, Clock, ArrowsClockwise, FloppyDisk } from "@phosphor-icons/react";
+import { FilePdf, Robot, Clock, ArrowsClockwise, FloppyDisk, Plus, Sparkle, Trash } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import RichEditor from "@/components/RichEditor";
 import { marked } from "marked";
@@ -73,6 +73,27 @@ export default function SummaryPage() {
       toast.success("Perubahan ringkasan tersimpan.");
     } catch (e) {
       toast.error(e.response?.data?.detail || "Gagal menyimpan.");
+    } finally {
+      setBusySave(false);
+    }
+  }
+
+  function startManual() {
+    const template = `<h3>Ringkasan Manual</h3><p>Tulis ringkasan eksekutif di sini.</p><p><strong>Highlight:</strong> ...</p><p><strong>Rekomendasi:</strong> ...</p>`;
+    setAiHtml(template);
+    setOriginalHtml("");
+  }
+
+  async function deleteSummary() {
+    if (!confirm("Hapus ringkasan untuk tanggal ini?")) return;
+    setBusySave(true);
+    try {
+      await api.patch("/summary/ai", { report_date: reportDate, html: "" });
+      setAiHtml("");
+      setOriginalHtml("");
+      toast.success("Ringkasan dihapus.");
+    } catch (e) {
+      toast.error(e.response?.data?.detail || "Gagal menghapus.");
     } finally {
       setBusySave(false);
     }
@@ -201,27 +222,63 @@ export default function SummaryPage() {
             color="#8B5CF6"
             testid="ai-preview-card"
             right={
-              <Button
-                onClick={saveEdits}
-                disabled={busySave || !isDirty || !aiHtml}
-                data-testid="save-edits-button"
-                className={`h-8 rounded-sm btn-tactical ${
-                  isDirty
-                    ? "bg-amber-500 hover:bg-amber-400 text-zinc-950"
-                    : "bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed"
-                }`}
-              >
-                <FloppyDisk size={12} weight="bold" className="mr-1.5" />
-                {busySave ? "Menyimpan..." : isDirty ? "Simpan" : "Tersimpan"}
-              </Button>
+              <div className="flex items-center gap-2">
+                {aiHtml ? (
+                  <Button
+                    onClick={deleteSummary}
+                    disabled={busySave}
+                    data-testid="delete-summary-button"
+                    className="h-8 rounded-sm btn-tactical bg-zinc-900 hover:bg-red-900/50 border border-zinc-800 hover:border-red-500/60 text-zinc-400 hover:text-red-400"
+                    title="Hapus ringkasan"
+                  >
+                    <Trash size={12} weight="bold" />
+                  </Button>
+                ) : null}
+                <Button
+                  onClick={saveEdits}
+                  disabled={busySave || !isDirty || !aiHtml}
+                  data-testid="save-edits-button"
+                  className={`h-8 rounded-sm btn-tactical ${
+                    isDirty
+                      ? "bg-amber-500 hover:bg-amber-400 text-zinc-950"
+                      : "bg-zinc-900 border border-zinc-800 text-zinc-500 cursor-not-allowed"
+                  }`}
+                >
+                  <FloppyDisk size={12} weight="bold" className="mr-1.5" />
+                  {busySave ? "Menyimpan..." : isDirty ? "Simpan" : "Tersimpan"}
+                </Button>
+              </div>
             }
           >
             {aiHtml ? (
               <RichEditor value={aiHtml} onChange={setAiHtml} testid="ai-rich-editor" />
             ) : (
-              <div className="text-sm text-zinc-500 py-12 text-center">
-                Belum ada ringkasan AI untuk tanggal <b className="text-amber-400 font-mono">{reportDate || "—"}</b>.
-                Klik <b className="text-amber-400">AI Summary</b> untuk membuatnya — lalu Anda bisa mengeditnya di sini.
+              <div className="py-10 flex flex-col items-center gap-4">
+                <p className="text-sm text-zinc-500 text-center max-w-md">
+                  Belum ada ringkasan untuk tanggal <b className="text-amber-400 font-mono">{reportDate || "—"}</b>.
+                </p>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={startManual}
+                    data-testid="start-manual-button"
+                    className="h-9 px-4 rounded-sm btn-tactical bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold"
+                  >
+                    <Plus size={14} weight="bold" className="mr-2" />
+                    Tulis Manual
+                  </Button>
+                  <Button
+                    onClick={generateAI}
+                    disabled={busyAI}
+                    data-testid="start-ai-button"
+                    className="h-9 px-4 rounded-sm btn-tactical bg-violet-600 hover:bg-violet-500 text-white"
+                  >
+                    <Sparkle size={14} weight="bold" className="mr-2" />
+                    {busyAI ? "Memproses..." : "AI Summary"}
+                  </Button>
+                </div>
+                <p className="text-[10px] text-zinc-600 uppercase tracking-wider">
+                  Tulis Manual = ketik bebas · AI Summary = generate dari data tim
+                </p>
               </div>
             )}
           </Card>

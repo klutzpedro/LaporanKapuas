@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { DownloadSimple, Trash, Funnel, Eye, X } from "@phosphor-icons/react";
+import { DownloadSimple, Trash, Funnel, Eye, X, Check } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm mt-1.5 h-9";
 
@@ -163,8 +163,7 @@ export default function HistoryPage() {
                   <tr className="overline text-left border-b border-zinc-800">
                     <th className="pb-2 pt-1 pr-3">Tanggal Laporan</th>
                     <th className="pb-2 pt-1 pr-3">Generated</th>
-                    <th className="pb-2 pt-1 pr-3">Oleh</th>
-                    <th className="pb-2 pt-1 pr-3">Counts (L/K/G/M/Ge/P)</th>
+                    <th className="pb-2 pt-1 pr-3">Absensi Tim</th>
                     <th className="pb-2 pt-1 pr-3">AI</th>
                     <th className="pb-2 pt-1 pr-3">Ukuran</th>
                     <th className="pb-2 pt-1 text-right">Aksi</th>
@@ -175,10 +174,7 @@ export default function HistoryPage() {
                     <tr key={it.id} className="border-b border-zinc-800/60 hover:bg-zinc-900/40" data-testid={`history-row-${it.id}`}>
                       <td className="py-3 pr-3 font-mono text-amber-400 font-bold">{it.report_date}</td>
                       <td className="py-3 pr-3 font-mono text-zinc-400">{fmtDate(it.generated_at)}</td>
-                      <td className="py-3 pr-3">{it.generated_by_name || "-"}</td>
-                      <td className="py-3 pr-3 font-mono text-zinc-300">
-                        {it.counts ? `${it.counts.lid}/${it.counts.kontra}/${it.counts.gal}/${it.counts.medmon}/${it.counts.geoint}/${it.counts.piket}` : "-"}
-                      </td>
+                      <td className="py-3 pr-3"><AttendanceBadges attendance={it.attendance || {}} /></td>
                       <td className="py-3 pr-3">
                         {it.has_ai_summary
                           ? <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-emerald-500/15 text-emerald-400">YA</span>
@@ -285,6 +281,43 @@ export default function HistoryPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const TEAM_LABELS = [
+  { key: "lid", short: "LID" },
+  { key: "kontra", short: "KTR" },
+  { key: "gal", short: "GAL" },
+  { key: "medmon", short: "MED" },
+  { key: "geoint", short: "GEO" },
+  { key: "piket", short: "PKT" },
+];
+
+function AttendanceBadges({ attendance }) {
+  const submitted = TEAM_LABELS.filter((t) => (attendance[t.key] || 0) > 0).length;
+  return (
+    <div className="flex items-center gap-1.5" data-testid="attendance-badges">
+      <span className="text-[10px] font-mono text-zinc-500 tabular-nums">{submitted}/6</span>
+      {TEAM_LABELS.map((t) => {
+        const count = attendance[t.key] || 0;
+        const ok = count > 0;
+        return (
+          <span
+            key={t.key}
+            title={ok ? `${t.short}: ${count} laporan` : `${t.short}: belum input`}
+            data-testid={`attendance-${t.key}-${ok ? "ok" : "miss"}`}
+            className={`inline-flex items-center gap-0.5 px-1.5 h-5 rounded-sm font-mono text-[9px] font-bold tracking-wider border ${
+              ok
+                ? "bg-emerald-500/15 text-emerald-400 border-emerald-500/40"
+                : "bg-zinc-900 text-zinc-600 border-zinc-800 line-through decoration-zinc-700"
+            }`}
+          >
+            {ok ? <Check size={8} weight="bold" /> : null}
+            {t.short}
+          </span>
+        );
+      })}
     </div>
   );
 }
