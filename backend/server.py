@@ -174,6 +174,72 @@ async def list_users(_user: dict = Depends(require_role("admin"))):
     return out
 
 
+class UserUpdateIn(BaseModel):
+    name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+
+
+@api.patch("/auth/users/{uid}")
+async def update_user(uid: str, payload: UserUpdateIn, user: dict = Depends(require_role("admin"))):
+    try:
+        oid = ObjectId(uid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    target = await db.users.find_one({"_id": oid})
+    if not target:
+        raise HTTPException(404, "User tidak ditemukan")
+    update = {}
+    if payload.name is not None:
+        update["name"] = payload.name
+    if payload.email is not None:
+        new_email = payload.email.lower()
+        if new_email != target["email"]:
+            if await db.users.find_one({"email": new_email}):
+                raise HTTPException(400, "Email sudah digunakan")
+            update["email"] = new_email
+    if payload.role is not None:
+        if payload.role not in ALLOWED_ROLES:
+            raise HTTPException(400, "Role tidak valid")
+        # Prevent demoting the last admin
+        if target.get("role") == "admin" and payload.role != "admin":
+            n_admin = await db.users.count_documents({"role": "admin"})
+            if n_admin <= 1:
+                raise HTTPException(400, "Tidak bisa demote admin terakhir")
+        update["role"] = payload.role
+    if payload.password:
+        if len(payload.password) < 6:
+            raise HTTPException(400, "Password minimal 6 karakter")
+        update["password_hash"] = hash_password(payload.password)
+    if not update:
+        raise HTTPException(400, "Tidak ada perubahan")
+    update["updated_at"] = datetime.now(timezone.utc).isoformat()
+    await db.users.update_one({"_id": oid}, {"$set": update})
+    new_doc = await db.users.find_one({"_id": oid}, {"password_hash": 0})
+    new_doc["id"] = str(new_doc["_id"]); del new_doc["_id"]
+    return new_doc
+
+
+@api.delete("/auth/users/{uid}")
+async def delete_user(uid: str, user: dict = Depends(require_role("admin"))):
+    try:
+        oid = ObjectId(uid)
+    except Exception:
+        raise HTTPException(400, "Invalid id")
+    if uid == user["id"]:
+        raise HTTPException(400, "Tidak bisa hapus akun sendiri")
+    target = await db.users.find_one({"_id": oid})
+    if not target:
+        raise HTTPException(404, "User tidak ditemukan")
+    if target.get("role") == "admin":
+        n_admin = await db.users.count_documents({"role": "admin"})
+        if n_admin <= 1:
+            raise HTTPException(400, "Tidak bisa hapus admin terakhir")
+    await db.users.delete_one({"_id": oid})
+    return {"ok": True}
+
+
 # ===================== REPORT MODELS (loose: dict bodies) =====================
 # We store: collection per team, each doc has report_date (YYYY-MM-DD), created_by, created_at, payload fields.
 
