@@ -17,7 +17,7 @@ from bson import ObjectId
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Body
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from starlette.middleware.cors import CORSMiddleware
 
 from pdf_generator import build_summary_pdf
@@ -388,11 +388,19 @@ async def delete_kontra(rid: str, _user: dict = Depends(require_role("tim_kontra
 
 # ===================== TIM GAL =====================
 class GalIn(BaseModel):
-    kategori: Literal["narasi", "video", "medsos"]
+    # Accept legacy "medsos" as alias; will be coerced to "meme" via validator below
+    kategori: Literal["narasi", "video", "meme", "medsos"]
     judul: str
     gambar: Optional[str] = None  # base64
     links: List[str] = Field(default_factory=list)
     keterangan: str = ""
+
+    @field_validator("kategori", mode="before")
+    @classmethod
+    def _coerce_medsos_to_meme(cls, v):
+        if isinstance(v, str) and v.strip().lower() == "medsos":
+            return "meme"
+        return v
 
 
 @api.post("/gal")
@@ -814,6 +822,16 @@ async def startup():
                 {"$set": {"password_hash": hash_password(pwd)}},
             )
     logger.info("Startup complete. Users seeded.")
+
+    # Migration: legacy "medsos" → "meme" in gal_reports
+    try:
+        res = await db.gal_reports.update_many(
+            {"kategori": "medsos"}, {"$set": {"kategori": "meme"}}
+        )
+        if res.modified_count:
+            logger.info(f"Migrated {res.modified_count} gal_reports kategori 'medsos' → 'meme'")
+    except Exception as e:
+        logger.warning(f"GAL kategori migration skipped: {e}")
 
 
 @app.on_event("shutdown")

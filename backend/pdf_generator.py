@@ -571,11 +571,15 @@ def html_to_paragraphs(html: str, base_size_pt: float = 8.5) -> list:
     soup = BeautifulSoup(html or "", "html.parser")
     blocks = []
 
-    # Matches numbered COG sections at start of a paragraph: "1. ACEH:", "2. JAKARTA:", etc.
-    # We strip inline tags first so the regex sees the plain text prefix.
+    # Match COG header items: "1. ACEH:", "2. JAKARTA:", "3. PAPUA:", "4. INTERNASIONAL:"
     cog_prefix_re = re.compile(
         r"^\s*\d+\.\s*(?:ACEH|JAKARTA|PAPUA|INTERNASIONAL)\b",
         re.IGNORECASE,
+    )
+    # Match MEDMON numbered subject items: "1. Presiden:", "2. Panglima TNI:", "3. MBG:", etc.
+    # We accept any short subject token followed by a colon, but exclude bullet rekomendasi etc.
+    medmon_prefix_re = re.compile(
+        r"^\s*\d+\.\s+[A-Za-zÀ-ÿ][\wÀ-ÿ\s\.\-/]{0,40}\s*:",
     )
     COG_INDENT_MM = 6 * mm  # visually "menjorok ke dalam"
 
@@ -583,10 +587,10 @@ def html_to_paragraphs(html: str, base_size_pt: float = 8.5) -> list:
         text = (text or "").strip()
         if not text:
             return
-        # Auto-indent COG numbered items (1. ACEH, 2. JAKARTA, 3. PAPUA, 4. INTERNASIONAL)
+        # Auto-indent numbered items (COG headers + MEDMON subjects) — both menjorok
         plain = re.sub(r"<[^>]+>", "", text)
-        if cog_prefix_re.match(plain):
-            style.setdefault("indent", COG_INDENT_MM)
+        if cog_prefix_re.match(plain) or medmon_prefix_re.match(plain):
+            style["indent"] = COG_INDENT_MM
         blocks.append((style, text))
 
     body = soup.body or soup
@@ -1129,7 +1133,9 @@ def _draw_gal_wide(c, x, y, w, h, data):
             fit_image(c, img, tx, img_area_y, thumb_w, img_area_h)
         # category badge at top
         cat = (it.get("kategori") or "").upper()
-        cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
+        if cat == "MEDSOS":
+            cat = "MEME"  # legacy alias
+        cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEME": COLOR_PURPLE}.get(cat, COLOR_MUTED)
         c.setFillColor(cat_color)
         c.rect(tx, ty + thumb_h - badge_h, thumb_w, badge_h, stroke=0, fill=1)
         c.setFillColor(white)
@@ -1439,7 +1445,9 @@ def _draw_kontra_card(c, x, y_top, w, item):
 def _draw_gal_card(c, x, y_top, w, item):
     pad = 2 * mm
     cat = (item.get("kategori") or "").upper()
-    cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEDSOS": COLOR_PURPLE}.get(cat, COLOR_MUTED)
+    if cat == "MEDSOS":
+        cat = "MEME"
+    cat_color = {"NARASI": COLOR_BLUE, "VIDEO": COLOR_RED, "MEME": COLOR_PURPLE}.get(cat, COLOR_MUTED)
     inner_w = w - 2 * pad
     img = decode_image(item.get("gambar"))
     img_w = 40 * mm if img else 0

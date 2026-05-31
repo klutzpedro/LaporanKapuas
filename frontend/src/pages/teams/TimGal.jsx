@@ -14,7 +14,12 @@ import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500/40 focus-visible:border-amber-500 mt-1.5";
 const EMPTY = { kategori: "narasi", judul: "", gambar: null, links: [""], keterangan: "" };
-const CATEGORY = { narasi: "NARASI", video: "VIDEO", medsos: "MEDSOS" };
+const CATEGORY = { narasi: "NARASI", video: "VIDEO", meme: "MEME" };
+
+// Coerce legacy "medsos" stored in older records → "meme" for display & form state.
+function normalizeKategori(k) {
+  return k === "medsos" ? "meme" : (k || "narasi");
+}
 
 export default function TimGal() {
   const [form, setForm] = useState(EMPTY);
@@ -35,7 +40,7 @@ export default function TimGal() {
   function startEdit(it) {
     setEditId(it.id);
     setForm({
-      kategori: it.kategori || "narasi",
+      kategori: normalizeKategori(it.kategori),
       judul: it.judul || "",
       gambar: it.gambar || null,
       links: (it.links && it.links.length) ? it.links : [""],
@@ -70,7 +75,7 @@ export default function TimGal() {
 
   return (
     <div data-testid="gal-page">
-      <PageHeader overline="TIM GAL" title="Konten Penggalangan" subtitle="Narasi · Video · Medsos" />
+      <PageHeader overline="TIM GAL" title="Konten Penggalangan" subtitle="Narasi · Video · Meme" />
       <div className="p-6 grid grid-cols-1 lg:grid-cols-2 gap-6">
         <Card title={editId ? "Edit Konten" : "Form Konten"} color={editId ? "#10B981" : "#3B82F6"} testid="gal-form-card">
           <form onSubmit={submit} className="space-y-4" data-testid="gal-form">
@@ -121,7 +126,7 @@ export default function TimGal() {
               {items.map((it) => (
                 <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 flex justify-between items-start gap-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`gal-item-${it.id}`}>
                   <div className="flex-1">
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{CATEGORY[it.kategori]}</span>
+                    <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{CATEGORY[normalizeKategori(it.kategori)]}</span>
                     <p className="font-bold text-sm mt-1">{it.judul}</p>
                     <div className="mt-1 space-y-0.5">
                       {(it.links || []).map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="block text-[11px] font-mono text-amber-400 break-all">{l}</a>)}
