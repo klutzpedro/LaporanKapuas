@@ -3,18 +3,18 @@ import { Input } from "./ui/input";
 
 /**
  * SentimentInput
- * 3 number inputs (positif, negatif, netral) + a live SVG pie preview.
- * Values are percentages. Total displayed for validation feedback.
+ * 3 number inputs (positif, negatif, netral) + live SVG pie preview.
+ * Values are percentages, support decimals (e.g. 44.38 or 44,38).
  */
 export function SentimentInput({ value, onChange, testid = "sentiment" }) {
-  const pos = clamp(Number(value?.positif) || 0);
-  const neg = clamp(Number(value?.negatif) || 0);
-  const net = clamp(Number(value?.netral) || 0);
-  const total = pos + neg + net;
-  const ok = total === 100;
+  const pos = clamp(toNum(value?.positif));
+  const neg = clamp(toNum(value?.negatif));
+  const net = clamp(toNum(value?.netral));
+  const total = round2(pos + neg + net);
+  const ok = Math.abs(total - 100) < 0.01;
 
   function set(k, v) {
-    onChange({ ...value, [k]: clamp(Number(v) || 0) });
+    onChange({ ...value, [k]: clamp(toNum(v)) });
   }
 
   return (
@@ -26,7 +26,7 @@ export function SentimentInput({ value, onChange, testid = "sentiment" }) {
           <Row color="#EF4444" label="Negatif" value={neg} onChange={(v) => set("negatif", v)} testid={`${testid}-negatif`} />
           <Row color="#A1A1AA" label="Netral" value={net} onChange={(v) => set("netral", v)} testid={`${testid}-netral`} />
           <div className={`text-[11px] font-mono mt-1 ${ok ? "text-emerald-400" : "text-red-400"}`} data-testid={`${testid}-total`}>
-            Total: {total}% {ok ? "✓" : "(harus = 100%)"}
+            Total: {formatNum(total)}% {ok ? "✓" : "(harus = 100%)"}
           </div>
         </div>
         <SentimentPie positif={pos} negatif={neg} netral={net} size={108} />
@@ -41,22 +41,14 @@ function Row({ color, label, value, onChange, testid }) {
       <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
       <span className="text-xs font-mono uppercase tracking-wider text-zinc-400 w-16">{label}</span>
       <Input
-        type="number"
-        inputMode="numeric"
-        min={0}
-        max={100}
-        value={value === 0 ? "" : value}
+        type="text"
+        inputMode="decimal"
+        value={value === 0 ? "" : formatNum(value)}
         placeholder="0"
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === "") { onChange(0); return; }
-          const n = parseInt(v, 10);
-          if (Number.isNaN(n)) return;
-          onChange(clamp(n));
-        }}
+        onChange={(e) => onChange(e.target.value)}
         onFocus={(e) => e.target.select()}
         data-testid={testid}
-        className="bg-zinc-950 border-zinc-800 rounded-sm h-8 w-20 font-mono text-sm"
+        className="bg-zinc-950 border-zinc-800 rounded-sm h-8 w-24 font-mono text-sm"
       />
       <span className="text-xs text-zinc-500">%</span>
     </div>
@@ -78,7 +70,7 @@ export function SentimentPie({ positif = 0, negatif = 0, netral = 0, size = 96 }
   const r = size / 2 - 2;
   let angleStart = -Math.PI / 2;
   const paths = segments.map((s, i) => {
-    const angle = (s.value / Math.max(1, total)) * 2 * Math.PI;
+    const angle = (s.value / Math.max(0.0001, total)) * 2 * Math.PI;
     const x1 = cx + r * Math.cos(angleStart);
     const y1 = cy + r * Math.sin(angleStart);
     const x2 = cx + r * Math.cos(angleStart + angle);
@@ -86,7 +78,6 @@ export function SentimentPie({ positif = 0, negatif = 0, netral = 0, size = 96 }
     const largeArc = angle > Math.PI ? 1 : 0;
     let d;
     if (segments.length === 1 && total > 0 && s.value === total) {
-      // full circle
       d = `M ${cx},${cy - r} A ${r},${r} 0 1 1 ${cx - 0.01},${cy - r} Z`;
     } else {
       d = `M ${cx},${cy} L ${x1},${y1} A ${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z`;
@@ -100,13 +91,35 @@ export function SentimentPie({ positif = 0, negatif = 0, netral = 0, size = 96 }
       {paths}
       <circle cx={cx} cy={cy} r={r * 0.55} fill="#0A0A0A" />
       <text x={cx} y={cy + 2} textAnchor="middle" fill="#F59E0B" fontSize="11" fontWeight="bold" fontFamily="ui-monospace, monospace">
-        {total}%
+        {formatNum(total)}%
       </text>
     </svg>
   );
 }
 
+// ---------- helpers ----------
+function toNum(v) {
+  if (v === null || v === undefined || v === "") return 0;
+  // Accept both comma and dot as decimal separator (Indonesian users use comma)
+  const s = String(v).replace(",", ".").trim();
+  if (s === "") return 0;
+  const n = parseFloat(s);
+  return Number.isNaN(n) ? 0 : n;
+}
+
 function clamp(n) {
   if (Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(100, n));
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function formatNum(n) {
+  // Show integer if whole number, otherwise up to 2 decimals
+  if (n === 0) return "0";
+  const r = round2(n);
+  if (Number.isInteger(r)) return String(r);
+  return String(r).replace(".", ",");
 }

@@ -308,9 +308,9 @@ class LidIn(BaseModel):
     analisa: str
     tindakan: str
     rekomendasi: str
-    sentiment_positif: int = 0
-    sentiment_negatif: int = 0
-    sentiment_netral: int = 0
+    sentiment_positif: float = 0
+    sentiment_negatif: float = 0
+    sentiment_netral: float = 0
 
 
 @api.post("/lid")
@@ -428,9 +428,9 @@ class MedmonIn(BaseModel):
     subjek: str  # "Presiden", "Panglima TNI", "MBG", or custom
     berita: List[MedmonItem] = Field(default_factory=list)
     chart_sumber_image: Optional[str] = None
-    sentiment_positif: int = 0
-    sentiment_negatif: int = 0
-    sentiment_netral: int = 0
+    sentiment_positif: float = 0
+    sentiment_negatif: float = 0
+    sentiment_netral: float = 0
     analisa: str = ""
     rekomendasi: str = ""
 

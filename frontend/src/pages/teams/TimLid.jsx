@@ -63,8 +63,8 @@ export default function TimLid() {
   async function submit(e) {
     e.preventDefault();
     const total = (form.sentiment_positif || 0) + (form.sentiment_negatif || 0) + (form.sentiment_netral || 0);
-    if (total !== 100) {
-      toast.error(`Total sentiment harus 100% (sekarang ${total}%).`);
+    if (Math.abs(total - 100) >= 0.01) {
+      toast.error(`Total sentiment harus 100% (sekarang ${total.toFixed(2)}%).`);
       return;
     }
     setBusy(true);
