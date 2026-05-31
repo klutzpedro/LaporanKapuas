@@ -1,3 +1,4 @@
+import { useState, useEffect, useRef } from "react";
 import { Label } from "./ui/label";
 import { Input } from "./ui/input";
 
@@ -36,6 +37,36 @@ export function SentimentInput({ value, onChange, testid = "sentiment" }) {
 }
 
 function Row({ color, label, value, onChange, testid }) {
+  // Keep local string state so user can type intermediate states like "44," or "44."
+  const [text, setText] = useState(value === 0 ? "" : formatNum(value));
+  const focusedRef = useRef(false);
+
+  // Sync from parent when not focused (e.g. when form loads or resets)
+  useEffect(() => {
+    if (!focusedRef.current) {
+      setText(value === 0 ? "" : formatNum(value));
+    }
+  }, [value]);
+
+  function handleChange(e) {
+    const raw = e.target.value;
+    // Allow only digits, comma, dot. Strip everything else.
+    const cleaned = raw.replace(/[^0-9.,]/g, "");
+    setText(cleaned);
+    onChange(cleaned);
+  }
+
+  function handleBlur() {
+    focusedRef.current = false;
+    // Normalize display on blur
+    setText(value === 0 ? "" : formatNum(value));
+  }
+
+  function handleFocus(e) {
+    focusedRef.current = true;
+    e.target.select();
+  }
+
   return (
     <div className="flex items-center gap-2">
       <span className="w-3 h-3 rounded-sm shrink-0" style={{ background: color }} />
@@ -43,10 +74,11 @@ function Row({ color, label, value, onChange, testid }) {
       <Input
         type="text"
         inputMode="decimal"
-        value={value === 0 ? "" : formatNum(value)}
+        value={text}
         placeholder="0"
-        onChange={(e) => onChange(e.target.value)}
-        onFocus={(e) => e.target.select()}
+        onChange={handleChange}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
         data-testid={testid}
         className="bg-zinc-950 border-zinc-800 rounded-sm h-8 w-24 font-mono text-sm"
       />
