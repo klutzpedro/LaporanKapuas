@@ -3,6 +3,7 @@ import { api, apiErrorMsg } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
+import { ItemActions } from "@/components/ActionIcons";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,7 +11,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
-import { Trash, PencilSimple, X } from "@phosphor-icons/react";
+import { X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500/40 focus-visible:border-amber-500 mt-1.5";
 const EMPTY = { satgas: "tek", judul: "", isi: "", gambar: null };
@@ -125,17 +126,11 @@ export default function Piket() {
   );
 }
 
-function Field({ label, children }) { return (<div><Label className="overline">{label}</Label>{children}</div>); }
-              </div>
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-      </div>
+function Field({ label, children }) {
+  return (
+    <div>
+      <Label className="overline">{label}</Label>
+      {children}
     </div>
   );
 }
-
-function Field({ label, children }) { return (<div><Label className="overline">{label}</Label>{children}</div>); }
