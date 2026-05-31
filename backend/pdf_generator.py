@@ -170,6 +170,130 @@ def fit_image(c, img, x, y, max_w, max_h):
         pass
 
 
+def _draw_sentiment_trend_chart(c, x, y, w, h, trend):
+    """Draw a multi-line trend chart of MEDMON positif % over the last 7 days.
+    trend = {"dates": [...x7], "subjects": {name: [{date, pos, neg, net, present}, ...x7], ...}}
+    """
+    # Title bar
+    bar_h = 5 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(x, y + h - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x + 2 * mm, y + h - bar_h + 1.4 * mm, "TREN SENTIMENT POSITIF 7 HARI TERAKHIR (MEDMON)")
+
+    # Frame
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y, w, h - bar_h, stroke=1, fill=0)
+
+    dates = (trend or {}).get("dates") or []
+    subjects = (trend or {}).get("subjects") or {}
+
+    # Empty state
+    if not dates or not subjects:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(x + 2 * mm, y + (h - bar_h) / 2 - 1 * mm,
+                     "Belum ada data MEDMON dalam 7 hari terakhir.")
+        return
+
+    # Layout: legend on the right (~30mm), plot area on the left
+    legend_w = 36 * mm
+    pad_l, pad_r, pad_t, pad_b = 8 * mm, 2 * mm, 3 * mm, 7 * mm
+    plot_x = x + pad_l
+    plot_y = y + pad_b
+    plot_w = w - legend_w - pad_l - pad_r
+    plot_h = h - bar_h - pad_t - pad_b
+
+    # Axes
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    # Y-axis
+    c.line(plot_x, plot_y, plot_x, plot_y + plot_h)
+    # X-axis
+    c.line(plot_x, plot_y, plot_x + plot_w, plot_y)
+
+    # Y gridlines at 0, 25, 50, 75, 100
+    c.setFont("Helvetica", 5.2)
+    c.setFillColor(COLOR_MUTED)
+    for pct in (0, 25, 50, 75, 100):
+        gy = plot_y + (pct / 100.0) * plot_h
+        c.setStrokeColor(COLOR_BORDER2)
+        c.setLineWidth(0.3)
+        c.line(plot_x, gy, plot_x + plot_w, gy)
+        c.drawRightString(plot_x - 1 * mm, gy - 0.8 * mm, f"{pct}%")
+
+    # X labels (DD/MM) — show every date, compact
+    n = len(dates)
+    step_x = plot_w / max(1, n - 1) if n > 1 else 0
+    c.setFont("Helvetica", 5)
+    c.setFillColor(COLOR_MUTED)
+    for i, d in enumerate(dates):
+        gx = plot_x + i * step_x
+        c.setStrokeColor(COLOR_BORDER2)
+        c.line(gx, plot_y, gx, plot_y + 1.2 * mm)
+        try:
+            dd = d[8:10]; mm_lbl = d[5:7]
+            label = f"{dd}/{mm_lbl}"
+        except Exception:
+            label = d
+        c.drawCentredString(gx, plot_y - 3 * mm, label)
+
+    # Palette for subject lines (cycle if more)
+    palette = [
+        "#F59E0B", "#3B82F6", "#10B981", "#EF4444",
+        "#8B5CF6", "#06B6D4", "#EAB308", "#EC4899",
+    ]
+
+    # Plot up to 8 subjects (legend space limit)
+    items = list(subjects.items())[:8]
+
+    for idx, (name, series) in enumerate(items):
+        color = HexColor(palette[idx % len(palette)])
+        c.setStrokeColor(color)
+        c.setFillColor(color)
+        c.setLineWidth(0.9)
+        # Build points (skip days with no data — represent as gap)
+        pts = []
+        for i, point in enumerate(series):
+            if not point.get("present"):
+                pts.append(None)
+            else:
+                px = plot_x + i * step_x
+                py = plot_y + (float(point["pos"]) / 100.0) * plot_h
+                pts.append((px, py))
+        # Draw line segments only between consecutive present points
+        prev = None
+        for p in pts:
+            if p and prev:
+                c.line(prev[0], prev[1], p[0], p[1])
+            prev = p
+        # Draw markers
+        for p in pts:
+            if p:
+                c.circle(p[0], p[1], 0.9 * mm, stroke=0, fill=1)
+
+    # Legend
+    lx = plot_x + plot_w + 4 * mm
+    ly = y + h - bar_h - pad_t - 1 * mm
+    c.setFont("Helvetica-Bold", 5.6)
+    c.setFillColor(COLOR_HEADER)
+    c.drawString(lx, ly, "LEGENDA")
+    ly -= 3 * mm
+    c.setFont("Helvetica", 6)
+    for idx, (name, _series) in enumerate(items):
+        if ly < y + 2 * mm:
+            break
+        color = HexColor(palette[idx % len(palette)])
+        c.setFillColor(color)
+        c.circle(lx + 1.2 * mm, ly + 0.6 * mm, 0.9 * mm, stroke=0, fill=1)
+        c.setFillColor(COLOR_TEXT)
+        label = truncate_to_width(str(name), "Helvetica", 6, legend_w - 6 * mm)
+        c.drawString(lx + 3.2 * mm, ly, label)
+        ly -= 3 * mm
+
+
 def _draw_sentiment_cases_strip(c, x, y, w, h, data):
     """Draw a strip of sentiment cases (LID + GEOINT) — each case shown as a small card with mini pie + label.
     y, x, w, h are the bounding box (h is total height)."""
@@ -839,29 +963,57 @@ def _draw_geoint_with_map(c, x, y, w, h, data):
     tbl_w = w * 0.55
     img_w = w * 0.45
 
-    # table
+    # Column layout (relative to x):
+    #   WILAYAH:   x+2..x+22       (width 20mm)
+    #   NAMA:      x+22..x+42       (width 20mm)
+    #   KOORDINAT: x+42..x+62       (width 20mm)
+    #   STATUS:    x+(tbl_w-12) → right edge
+    col_wilayah_x = 2 * mm
+    col_nama_x = 22 * mm
+    col_koord_x = 42 * mm
+    col_status_x = tbl_w - 12 * mm
+
+    # table header
     c.setFillColor(COLOR_MUTED)
     c.setFont("Helvetica-Bold", 5.5)
-    c.drawString(x + 2 * mm, cy - 3 * mm, "WILAYAH")
-    c.drawString(x + 22 * mm, cy - 3 * mm, "NAMA")
-    c.drawString(x + tbl_w - 18 * mm, cy - 3 * mm, "STATUS")
-    c.drawString(x + tbl_w - 6 * mm, cy - 3 * mm, "")
+    c.drawString(x + col_wilayah_x, cy - 3 * mm, "WILAYAH")
+    c.drawString(x + col_nama_x, cy - 3 * mm, "NAMA")
+    c.drawString(x + col_koord_x, cy - 3 * mm, "KOORDINAT")
+    c.drawString(x + col_status_x, cy - 3 * mm, "STATUS")
     line_y = cy - 5 * mm
     c.setStrokeColor(COLOR_BORDER2)
     c.line(x + 1 * mm, line_y, x + tbl_w - 1 * mm, line_y)
 
     cur_y = line_y - 2.5 * mm
     c.setFont("Helvetica", 6.2)
+    nama_max_w = col_koord_x - col_nama_x - 1 * mm
+    wilayah_max_w = col_nama_x - col_wilayah_x - 1 * mm
+    koord_max_w = col_status_x - col_koord_x - 1 * mm
     for it in items[:8]:
         if cur_y < bottom + 1 * mm:
             break
         c.setFillColor(COLOR_TEXT)
-        c.drawString(x + 2 * mm, cur_y, truncate_to_width(str(it.get("wilayah", "-")), "Helvetica", 6.2, 18 * mm))
-        c.drawString(x + 22 * mm, cur_y, truncate_to_width(str(it.get("nama_orang", "-")), "Helvetica", 6.2, tbl_w - 22 * mm - 20 * mm))
+        c.drawString(x + col_wilayah_x, cur_y,
+                     truncate_to_width(str(it.get("wilayah", "-")), "Helvetica", 6.2, wilayah_max_w))
+        c.drawString(x + col_nama_x, cur_y,
+                     truncate_to_width(str(it.get("nama_orang", "-")), "Helvetica", 6.2, nama_max_w))
+        lat = it.get("lat")
+        lon = it.get("lon")
+        if lat is not None and lon is not None:
+            try:
+                koord = f"{float(lat):.4f}, {float(lon):.4f}"
+            except Exception:
+                koord = f"{lat}, {lon}"
+        else:
+            koord = "-"
+        c.setFont("Helvetica", 5.8)
+        c.drawString(x + col_koord_x, cur_y,
+                     truncate_to_width(koord, "Helvetica", 5.8, koord_max_w))
+        c.setFont("Helvetica", 6.2)
         is_aktif = it.get("status") == "aktif"
         c.setFillColor(COLOR_RED if is_aktif else COLOR_GREEN)
         c.setFont("Helvetica-Bold", 5.8)
-        c.drawString(x + tbl_w - 18 * mm, cur_y, "AKTIF" if is_aktif else "NON-AKTIF")
+        c.drawString(x + col_status_x, cur_y, "AKTIF" if is_aktif else "NON-AKTIF")
         c.setFont("Helvetica", 6.2)
         cur_y -= 2.8 * mm
 
@@ -1400,14 +1552,17 @@ def build_summary_pdf(data, ai_text, ai_html=None):
             c.drawRightString(MARGIN + w - 2 * mm, state["y"] - bar_h + 1.4 * mm, count_text)
         state["y"] -= bar_h + 2 * mm
 
-    # =========== PAGE 1: Executive Summary + Sentiment Cases Strip ===========
+    # =========== PAGE 1: Executive Summary + 7-day Trend Chart + Sentiment Cases Strip ===========
     _draw_header(c, rd)
     cases_h = 50 * mm  # bottom strip for sentiment cases
+    trend_h = 38 * mm  # 7-day trend chart strip
     cases_y = avail_bottom
+    trend_y = cases_y + cases_h + 3 * mm
     sum_top = avail_top
-    sum_bottom = cases_y + cases_h + 4 * mm
+    sum_bottom = trend_y + trend_h + 3 * mm
     sum_h = sum_top - sum_bottom
     _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
+    _draw_sentiment_trend_chart(c, MARGIN, trend_y, w, trend_h, data.get("medmon_trend") or {})
     _draw_sentiment_cases_strip(c, MARGIN, cases_y, w, cases_h, data)
 
     # =========== PAGE 2+: Detail cards (auto-paginated) ===========

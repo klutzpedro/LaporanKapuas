@@ -542,6 +542,43 @@ async def collect_daily_data(report_date: str) -> dict:
     }
 
 
+async def collect_medmon_7day_trend(report_date: str) -> dict:
+    """Return last-7-days sentiment trend per MEDMON subject ending at report_date (inclusive).
+    Shape: {"dates": ["YYYY-MM-DD", ...x7], "subjects": {"Presiden": [{date, pos, neg, net}, ...x7], ...}}
+    Missing days are filled with zeros (gap in chart line).
+    """
+    from datetime import date as _date, timedelta as _td
+    try:
+        end = _date.fromisoformat(report_date)
+    except Exception:
+        end = datetime.now(WIB).date()
+    dates = [(end - _td(days=6 - i)).isoformat() for i in range(7)]
+    cursor = db.medmon_reports.find({"report_date": {"$in": dates}})
+    by_date: dict = {}
+    async for doc in cursor:
+        rd = doc.get("report_date")
+        subj = (doc.get("subjek") or "-").strip()
+        by_date.setdefault(rd, {})[subj] = {
+            "pos": float(doc.get("sentiment_positif") or 0),
+            "neg": float(doc.get("sentiment_negatif") or 0),
+            "net": float(doc.get("sentiment_netral") or 0),
+        }
+    # Union of all subjects appearing in any of the 7 days
+    all_subjects: list = []
+    for rd in dates:
+        for s in (by_date.get(rd) or {}).keys():
+            if s not in all_subjects:
+                all_subjects.append(s)
+    subjects: dict = {}
+    for s in all_subjects:
+        series = []
+        for rd in dates:
+            v = (by_date.get(rd) or {}).get(s)
+            series.append({"date": rd, "pos": v["pos"] if v else 0, "neg": v["neg"] if v else 0, "net": v["net"] if v else 0, "present": v is not None})
+        subjects[s] = series
+    return {"dates": dates, "subjects": subjects}
+
+
 @api.get("/daily")
 async def daily(report_date: Optional[str] = None, _user: dict = Depends(get_current_user)):
     rd = report_date or report_date_for_generation()
@@ -633,6 +670,8 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
         raise HTTPException(status_code=400,
                             detail="Laporan tanggal hari ini hanya bisa di-generate setelah pukul 12:00 WIB.")
     data = await collect_daily_data(rd)
+    # 7-day MEDMON sentiment trend for the trend chart on page 1
+    data["medmon_trend"] = await collect_medmon_7day_trend(rd)
     # Get cached AI summary if any — prefer edited HTML over raw text
     ai_doc = await db.ai_summaries.find_one({"report_date": rd})
     ai_text = ai_doc.get("text") if ai_doc else None
