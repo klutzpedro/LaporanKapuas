@@ -447,10 +447,22 @@ def html_to_paragraphs(html: str, base_size_pt: float = 8.5) -> list:
     soup = BeautifulSoup(html or "", "html.parser")
     blocks = []
 
+    # Matches numbered COG sections at start of a paragraph: "1. ACEH:", "2. JAKARTA:", etc.
+    # We strip inline tags first so the regex sees the plain text prefix.
+    cog_prefix_re = re.compile(
+        r"^\s*\d+\.\s*(?:ACEH|JAKARTA|PAPUA|INTERNASIONAL)\b",
+        re.IGNORECASE,
+    )
+    COG_INDENT_MM = 6 * mm  # visually "menjorok ke dalam"
+
     def push(text, **style):
         text = (text or "").strip()
         if not text:
             return
+        # Auto-indent COG numbered items (1. ACEH, 2. JAKARTA, 3. PAPUA, 4. INTERNASIONAL)
+        plain = re.sub(r"<[^>]+>", "", text)
+        if cog_prefix_re.match(plain):
+            style.setdefault("indent", COG_INDENT_MM)
         blocks.append((style, text))
 
     body = soup.body or soup

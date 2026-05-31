@@ -48,9 +48,13 @@ def _format_payload(data: dict) -> str:
     for it in data.get("medmon", []):
         pos = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "positif")
         neg = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "negatif")
+        sp = it.get("sentiment_positif", 0)
+        sn = it.get("sentiment_negatif", 0)
+        snt = it.get("sentiment_netral", 0)
         lines.append(
-            f"- {it.get('subjek','')}: positif={pos}, negatif={neg} | "
-            f"Analisa: {it.get('analisa','')[:200]} | Rekomendasi: {it.get('rekomendasi','')[:140]}"
+            f"- SUBJEK: {it.get('subjek','')} | Sentiment: positif {sp}%, negatif {sn}%, netral {snt}% "
+            f"| Berita +{pos}/-{neg} | "
+            f"Analisa: {it.get('analisa','')[:220]} | Rekomendasi: {it.get('rekomendasi','')[:160]}"
         )
 
     lines.append("\n== GEOINT (Posisi OPM) ==")
@@ -81,17 +85,27 @@ async def generate_ai_summary(data: dict) -> str:
 
     user_text = (
         "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI. Wajib gabungkan SEMUA tim. "
-        "Format WAJIB (Bahasa Indonesia, total max 320 kata, kalimat efisien & padat):\n\n"
-        "RINGKASAN EKSEKUTIF: (3 kalimat menjawab: apa kejadian utama hari ini, apa risiko, apa yang harus diketahui pimpinan).\n"
-        "1. ACEH: (2 kalimat).\n"
-        "2. JAKARTA: (2 kalimat).\n"
-        "3. PAPUA: (2 kalimat, sertakan total titik OPM termonitor & berapa AKTIF bila ada).\n"
-        "4. INTERNASIONAL: (1-2 kalimat).\n"
-        "MEDMON: (1-2 kalimat ringkas — subjek penting, tren sentimen positif/negatif).\n"
-        "KONTRA & GAL: (1-2 kalimat — TO mencolok hari ini & arahan konten galang).\n"
-        "PIKET: (1 kalimat — laporan satgas tek/sandi/medis bila ada).\n"
-        "REKOMENDASI: (3-4 poin singkat, action-oriented).\n\n"
-        "Jangan ulang label menjadi heading panjang. Jangan pakai bullet selain pada bagian REKOMENDASI.\n\n"
+        "Format WAJIB (Bahasa Indonesia, total max 380 kata, kalimat efisien & padat):\n\n"
+        "RINGKASAN EKSEKUTIF: (3 kalimat menjawab: apa kejadian utama hari ini, apa risiko, apa yang harus diketahui pimpinan).\n\n"
+        "(Bagian COG — masing-masing 1-2 kalimat. Jika tidak ada data, tulis: 'Tidak ada perkembangan signifikan terpantau periode ini.')\n"
+        "1. ACEH:\n"
+        "2. JAKARTA:\n"
+        "3. PAPUA: (sertakan total titik OPM termonitor & berapa AKTIF bila ada).\n"
+        "4. INTERNASIONAL:\n\n"
+        "(Bagian Per-Tim — masing-masing satu paragraf terpisah di baris baru)\n"
+        "LID: (1-2 kalimat — berita trending paling penting hari ini & dampaknya).\n"
+        "KONTRA: (1-2 kalimat — TO/profiling mencolok hari ini, sumber & tipe ancaman).\n"
+        "GAL: (1-2 kalimat — arahan konten galang & kategori dominan).\n"
+        "MEDMON: SEBUTKAN SETIAP SUBJEK SECARA TERPISAH dalam format inline: "
+        "'Presiden: positif X% / negatif Y% / netral Z% — ringkasan; "
+        "Panglima TNI: positif X% / negatif Y% / netral Z% — ringkasan; "
+        "MBG: ...; dst.' "
+        "Jangan gabungkan menjadi 1 ringkasan; tulis tiap subjek dengan persentase sentimennya.\n"
+        "GEOINT: (1 kalimat — total titik OPM aktif & wilayah utama).\n"
+        "PIKET: (1 kalimat — laporan satgas tek/sandi/medis bila ada).\n\n"
+        "REKOMENDASI: (3-5 poin singkat, action-oriented, gunakan bullet '-').\n\n"
+        "Jangan ulang label menjadi heading panjang. Jangan pakai bullet selain pada bagian REKOMENDASI. "
+        "Pastikan tiap section LID/KONTRA/GAL/MEDMON/GEOINT/PIKET adalah PARAGRAF TERPISAH (pisahkan dengan baris kosong).\n\n"
         "Data hari ini:\n" + _format_payload(data)
     )
 
