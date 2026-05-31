@@ -15,6 +15,7 @@ import bcrypt
 import jwt
 from bson import ObjectId
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, Response, Body
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import StreamingResponse
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field, field_validator
@@ -684,24 +685,31 @@ async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(r
     ai_doc = await db.ai_summaries.find_one({"report_date": rd})
     ai_text = ai_doc.get("text") if ai_doc else None
     ai_html = ai_doc.get("html") if ai_doc else None
-    pdf_bytes = build_summary_pdf(data, ai_text, ai_html=ai_html)
+    # Run heavy sync PDF generation (incl. OSM tile fetch, PIL drawing) in a
+    # threadpool so it doesn't block the asyncio event loop. This is what lets
+    # ~20 concurrent users hit the system without one PDF stalling all others.
+    pdf_bytes = await run_in_threadpool(build_summary_pdf, data, ai_text, ai_html=ai_html)
     filename = f"BAIS_Summary_{rd}.pdf"
 
     # Persist to history (generated_reports) — keep only the LATEST per report_date
     import base64 as _b64
     counts = {k: len(data.get(k, [])) for k in ["lid", "kontra", "gal", "medmon", "geoint", "piket"]}
-    await db.generated_reports.delete_many({"report_date": rd})
-    await db.generated_reports.insert_one({
-        "report_date": rd,
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-        "generated_by": user["id"],
-        "generated_by_name": user.get("name", ""),
-        "filename": filename,
-        "size_bytes": len(pdf_bytes),
-        "pdf_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
-        "counts": counts,
-        "has_ai_summary": bool(ai_text),
-    })
+    # Single atomic upsert (replaces previous delete_many+insert_one race)
+    await db.generated_reports.replace_one(
+        {"report_date": rd},
+        {
+            "report_date": rd,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_by": user["id"],
+            "generated_by_name": user.get("name", ""),
+            "filename": filename,
+            "size_bytes": len(pdf_bytes),
+            "pdf_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
+            "counts": counts,
+            "has_ai_summary": bool(ai_text),
+        },
+        upsert=True,
+    )
 
     return StreamingResponse(
         iter([pdf_bytes]),
@@ -832,6 +840,21 @@ async def startup():
             logger.info(f"Migrated {res.modified_count} gal_reports kategori 'medsos' → 'meme'")
     except Exception as e:
         logger.warning(f"GAL kategori migration skipped: {e}")
+
+    # Indexes for high-concurrency read paths (20+ simultaneous users)
+    try:
+        for coll in [
+            "lid_reports", "kontra_reports", "gal_reports",
+            "medmon_reports", "geoint_reports", "piket_reports",
+        ]:
+            await db[coll].create_index("report_date")
+            await db[coll].create_index([("report_date", 1), ("updated_at", -1)])
+        await db.generated_reports.create_index("report_date", unique=True)
+        await db.ai_summaries.create_index("report_date", unique=True)
+        await db.users.create_index("email", unique=True)
+        logger.info("Indexes ensured for high-concurrency reads.")
+    except Exception as e:
+        logger.warning(f"Index creation skipped: {e}")
 
 
 @app.on_event("shutdown")

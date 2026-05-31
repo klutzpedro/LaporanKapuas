@@ -43,7 +43,7 @@ yarn build
 echo "⚙️  [12/16] Setup supervisor for backend..."
 cat > /etc/supervisor/conf.d/bais-backend.conf <<'EOF'
 [program:bais-backend]
-command=/var/www/LaporanKapuas/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 2
+command=/var/www/LaporanKapuas/backend/venv/bin/uvicorn server:app --host 127.0.0.1 --port 8001 --workers 4 --timeout-keep-alive 75 --limit-concurrency 200
 directory=/var/www/LaporanKapuas/backend
 user=root
 autostart=true

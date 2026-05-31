@@ -391,6 +391,85 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
 PAPUA_CENTER = (138.5, -4.5)  # (lon, lat) — Tanah Papua center
 PAPUA_ZOOM = 6                # covers entire Papua mainland
 
+# Module-level cache: (width, height) -> base PIL image of Papua with NO markers.
+# Fetching OSM tiles costs 30-60s on the first call; subsequent renders just
+# copy this image and overlay markers/labels (~30ms). Critical for 20+
+# concurrent users sharing the same map background.
+_PAPUA_BASE_CACHE: dict = {}
+_PAPUA_BASE_LOCK = None
+
+
+def _get_papua_base(width_px: int, height_px: int):
+    """Fetch & cache the Papua base map (without markers). Thread-safe."""
+    global _PAPUA_BASE_LOCK
+    if _PAPUA_BASE_LOCK is None:
+        import threading
+        _PAPUA_BASE_LOCK = threading.Lock()
+    key = (width_px, height_px)
+    cached = _PAPUA_BASE_CACHE.get(key)
+    if cached is not None:
+        return cached.copy()
+    with _PAPUA_BASE_LOCK:
+        cached = _PAPUA_BASE_CACHE.get(key)
+        if cached is not None:
+            return cached.copy()
+        try:
+            base_map = StaticMap(
+                width_px, height_px,
+                url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png",
+            )
+            base_image = base_map.render(zoom=PAPUA_ZOOM, center=PAPUA_CENTER)
+            _PAPUA_BASE_CACHE[key] = base_image
+            return base_image.copy()
+        except Exception:
+            return None
+
+# WIB timezone helper for update banner — same as backend WIB
+try:
+    from zoneinfo import ZoneInfo  # type: ignore
+    _WIB = ZoneInfo("Asia/Jakarta")
+except Exception:
+    _WIB = None
+
+
+def _format_update_text(items):
+    """Format 'POSISI OPM UPDATE TANGGAL DD/MM/YYYY JAM HH.MM WIB' from latest
+    updated_at among items. Falls back to report_date or today if missing.
+    """
+    from datetime import datetime
+    latest = None
+    for it in items or []:
+        for key in ("updated_at", "created_at"):
+            v = it.get(key)
+            if not v:
+                continue
+            try:
+                if isinstance(v, str):
+                    # ISO format
+                    dt = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                elif isinstance(v, datetime):
+                    dt = v
+                else:
+                    continue
+                if latest is None or dt > latest:
+                    latest = dt
+            except Exception:
+                continue
+    if latest is None:
+        latest = datetime.now()
+    try:
+        if _WIB is not None:
+            if latest.tzinfo is None:
+                from datetime import timezone
+                latest = latest.replace(tzinfo=timezone.utc)
+            latest = latest.astimezone(_WIB)
+    except Exception:
+        pass
+    return (
+        f"POSISI OPM  ·  UPDATE TANGGAL {latest.strftime('%d/%m/%Y')}"
+        f"  ·  JAM {latest.strftime('%H.%M')} WIB"
+    )
+
 
 def _lon_to_x(lon, zoom):
     return ((lon + 180.0) / 360.0) * (2 ** zoom)
@@ -403,143 +482,114 @@ def _lat_to_y(lat, zoom):
     ) / 2.0 * (2 ** zoom)
 
 
-def render_papua_map(items, width_px=900, height_px=700, draw_labels=False):
-    """Render a Papua-centered map with all OPM positions plotted.
-    Aktif = red, tidak_aktif = green. If draw_labels=True, the target's NAME
-    is drawn next to each marker via PIL with smart de-overlap.
+def render_papua_map(items, width_px=900, height_px=700, draw_labels=False, update_text=None):
+    """Render a Papua-centered map with all OPM positions plotted using a
+    CACHED base map (fetched once, reused thousands of times). Markers and
+    labels are drawn via PIL ImageDraw on a copy of the cached base.
+
+    - markers: white ring + red disc (aktif) or green disc (non-aktif)
+    - draw_labels=True : number each marker (1..N matching table order)
+    - update_text      : top header strip with timestamp
     Returns an ImageReader or None.
     """
     if not _HAS_STATICMAP:
         return None
+    image = _get_papua_base(width_px, height_px)
+    if image is None:
+        return None
     try:
-        m = StaticMap(width_px, height_px, url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png")
-        valid_items = []
-        for it in items:
+        from PIL import ImageDraw, ImageFont
+        # Mode RGBA for translucent banner / boxes
+        if image.mode != "RGBA":
+            image = image.convert("RGBA")
+        draw = ImageDraw.Draw(image, "RGBA")
+        center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
+        center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
+
+        # Compute marker pixel positions + status colors
+        valid = []
+        for it in items or []:
             try:
                 lat = float(it.get("lat"))
                 lon = float(it.get("lon"))
             except (TypeError, ValueError):
                 continue
-            color = "#EF4444" if it.get("status") == "aktif" else "#10B981"
-            # outer ring (white) + inner colored dot for visibility on OSM tiles
-            ring = 16 if draw_labels else 14
-            inner = 11 if draw_labels else 10
-            m.add_marker(CircleMarker((lon, lat), "#FFFFFF", ring))
-            m.add_marker(CircleMarker((lon, lat), color, inner))
-            valid_items.append((lat, lon, it.get("nama_orang", "-"), color))
-        image = m.render(zoom=PAPUA_ZOOM, center=PAPUA_CENTER)
+            color = (239, 68, 68) if it.get("status") == "aktif" else (16, 185, 129)
+            mx = _lon_to_x(lon, PAPUA_ZOOM)
+            my = _lat_to_y(lat, PAPUA_ZOOM)
+            px = (mx - center_x) * 256 + width_px / 2
+            py = (my - center_y) * 256 + height_px / 2
+            valid.append((px, py, color))
 
-        # Overlay target NAME labels with smart de-overlap algorithm
-        if draw_labels and valid_items:
+        # Draw markers (white ring + colored disc)
+        ring = 22 if draw_labels else 14
+        inner = 18 if draw_labels else 10
+        for px, py, color in valid:
+            draw.ellipse(
+                [px - ring, py - ring, px + ring, py + ring],
+                fill=(255, 255, 255, 255), outline=(0, 0, 0, 80), width=2,
+            )
+            draw.ellipse(
+                [px - inner, py - inner, px + inner, py + inner],
+                fill=(*color, 255), outline=(255, 255, 255, 255), width=2,
+            )
+
+        # Font loader with fallback chain
+        def load_font(size):
+            for fp in [
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+            ]:
+                try:
+                    return ImageFont.truetype(fp, size)
+                except Exception:
+                    pass
             try:
-                from PIL import ImageDraw, ImageFont
-                draw = ImageDraw.Draw(image, "RGBA")
-                center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
-                center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
-
-                # Pick a TTF font with sane fallback chain
-                font = None
-                for fp in [
-                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                import reportlab
+                rl_dir = os.path.dirname(reportlab.__file__)
+                for cand in [
+                    os.path.join(rl_dir, "fonts", "VeraBd.ttf"),
+                    os.path.join(rl_dir, "fonts", "Vera.ttf"),
                 ]:
-                    try:
-                        font = ImageFont.truetype(fp, 16)
-                        break
-                    except Exception:
-                        pass
-                if font is None:
-                    try:
-                        import reportlab
-                        rl_dir = os.path.dirname(reportlab.__file__)
-                        for cand in [
-                            os.path.join(rl_dir, "fonts", "VeraBd.ttf"),
-                            os.path.join(rl_dir, "fonts", "Vera.ttf"),
-                        ]:
-                            if os.path.exists(cand):
-                                font = ImageFont.truetype(cand, 16)
-                                break
-                    except Exception:
-                        font = None
-                if font is None:
-                    font = ImageFont.load_default()
-
-                # Step 1: compute marker pixel positions
-                pts = []
-                for lat, lon, name, color in valid_items:
-                    mx = _lon_to_x(lon, PAPUA_ZOOM)
-                    my = _lat_to_y(lat, PAPUA_ZOOM)
-                    px = (mx - center_x) * 256 + width_px / 2
-                    py = (my - center_y) * 256 + height_px / 2
-                    pts.append({"px": px, "py": py, "name": name, "color": color})
-
-                # Step 2: compute label sizes
-                def text_size(txt):
-                    try:
-                        b = draw.textbbox((0, 0), txt, font=font)
-                        return b[2] - b[0], b[3] - b[1]
-                    except Exception:
-                        return len(txt) * 8, 16
-
-                for p in pts:
-                    tw, th = text_size(p["name"])
-                    p["tw"] = tw + 10  # padding
-                    p["th"] = th + 6
-
-                # Step 3: greedy de-overlap — sort by py (top first)
-                pts_sorted = sorted(pts, key=lambda p: p["py"])
-                placed_boxes = []  # list of (x1, y1, x2, y2)
-
-                def overlaps(b1, b2):
-                    return not (b1[2] < b2[0] or b1[0] > b2[2] or b1[3] < b2[1] or b1[1] > b2[3])
-
-                LINE_H = 22  # vertical step when conflict
-                MARKER_OFFSET = 18  # base x offset right of marker
-
-                for p in pts_sorted:
-                    label_x = int(p["px"] + MARKER_OFFSET)
-                    label_y = int(p["py"] - p["th"] / 2)
-                    # If label exceeds right edge, place it on the LEFT of marker
-                    if label_x + p["tw"] > width_px - 4:
-                        label_x = int(p["px"] - MARKER_OFFSET - p["tw"])
-                    box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
-                    # de-overlap: push label down until clear
-                    tries = 0
-                    while any(overlaps(box, b) for b in placed_boxes) and tries < 12:
-                        label_y += LINE_H
-                        box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
-                        tries += 1
-                    # Clamp inside image
-                    if box[3] > height_px - 4:
-                        # try above marker
-                        label_y = int(p["py"] - p["th"] - 12)
-                        box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
-                    placed_boxes.append(box)
-                    p["lx"] = label_x
-                    p["ly"] = label_y
-                    p["box"] = box
-
-                # Step 4: draw connector lines (faint) + label boxes + text
-                for p in pts:
-                    if "box" not in p:
-                        continue
-                    box = p["box"]
-                    # connector from marker centre to nearest box corner
-                    bx_center_x = (box[0] + box[2]) / 2
-                    bx_center_y = (box[1] + box[3]) / 2
-                    if abs(bx_center_y - p["py"]) > 6 or abs(bx_center_x - p["px"]) > 4:
-                        draw.line(
-                            [(p["px"], p["py"]), (bx_center_x, bx_center_y)],
-                            fill=(20, 20, 20, 180), width=1,
-                        )
-                    # white pill with colored left border
-                    draw.rectangle(box, fill=(255, 255, 255, 245), outline=p["color"], width=2)
-                    draw.text((box[0] + 5, box[1] + 3), p["name"], fill=(15, 23, 42, 255), font=font)
+                    if os.path.exists(cand):
+                        return ImageFont.truetype(cand, size)
             except Exception:
                 pass
+            return ImageFont.load_default()
+
+        num_font = load_font(20)
+        banner_font = load_font(22)
+
+        # Update banner (top strip)
+        if update_text:
+            BANNER_H = 38
+            draw.rectangle([0, 0, width_px, BANNER_H], fill=(15, 23, 42, 220))
+            try:
+                bb = draw.textbbox((0, 0), update_text, font=banner_font)
+                tw = bb[2] - bb[0]
+            except Exception:
+                tw = len(update_text) * 11
+            tx = max(8, (width_px - tw) // 2)
+            draw.text((tx, 8), update_text, fill=(245, 158, 11, 255), font=banner_font)
+
+        # Numbered labels CENTERED on each marker (1..N matching table order)
+        if draw_labels:
+            for idx, (px, py, _color) in enumerate(valid, 1):
+                label = str(idx)
+                try:
+                    bb = draw.textbbox((0, 0), label, font=num_font)
+                    tw = bb[2] - bb[0]
+                    th = bb[3] - bb[1]
+                except Exception:
+                    tw, th = 12, 16
+                draw.text(
+                    (px - tw / 2, py - th / 2 - 2),
+                    label, fill=(255, 255, 255, 255), font=num_font,
+                )
 
         buf = io.BytesIO()
-        image.save(buf, format="PNG")
+        # Convert back to RGB for smaller PNG
+        image.convert("RGB").save(buf, format="PNG")
         buf.seek(0)
         return ImageReader(buf)
     except Exception:
@@ -1188,14 +1238,23 @@ def _draw_geoint_fullpage(c, x_left, x_right, top, bottom, data):
     c.setLineWidth(0.5)
     c.rect(x_left, map_bottom, w, map_h, stroke=1, fill=0)
 
-    # Render map at high resolution with name labels.
+    # Render map at high resolution with numbered labels + update banner.
     # Match image aspect ratio to frame aspect (no whitespace inside the frame).
     frame_inner_w_mm = (w - 2 * mm) / mm  # mm
     frame_inner_h_mm = (map_h - 2 * mm) / mm
     target_aspect = frame_inner_w_mm / max(1.0, frame_inner_h_mm)
     map_width_px = 1800
     map_height_px = max(800, int(map_width_px / target_aspect))
-    map_img = render_papua_map(items, width_px=map_width_px, height_px=map_height_px, draw_labels=True)
+
+    # Build update banner text from latest updated_at among items (fallback to today)
+    update_text = _format_update_text(items)
+    map_img = render_papua_map(
+        items,
+        width_px=map_width_px,
+        height_px=map_height_px,
+        draw_labels=True,
+        update_text=update_text,
+    )
     if map_img is None:
         # Fallback: try user-uploaded image
         for it in items:
