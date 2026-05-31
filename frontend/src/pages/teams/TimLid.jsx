@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SentimentInput } from "@/components/SentimentInput";
 import { toast } from "sonner";
+import { ItemActions } from "@/components/ActionIcons";
 import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const EMPTY = {
@@ -147,10 +148,12 @@ export default function TimLid() {
                       {it.link && <a href={it.link} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-amber-400 break-all">{it.link}</a>}
                       <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
                     </div>
-                    <div className="flex gap-1 items-start">
-                      <button onClick={() => startEdit(it)} data-testid={`lid-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
-                      <button onClick={() => del(it.id)} data-testid={`lid-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
-                    </div>
+                    <ItemActions
+                      onEdit={() => startEdit(it)}
+                      onDelete={() => del(it.id)}
+                      editTestid={`lid-edit-${it.id}`}
+                      deleteTestid={`lid-delete-${it.id}`}
+                    />
                   </div>
                 </li>
               ))}

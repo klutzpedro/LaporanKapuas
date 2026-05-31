@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import ImageUploader from "@/components/ImageUploader";
 import { SentimentInput } from "@/components/SentimentInput";
 import { toast } from "sonner";
+import { ItemActions } from "@/components/ActionIcons";
 import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500/40 focus-visible:border-amber-500 mt-1.5";
@@ -165,8 +166,12 @@ export default function TimMedmon() {
                       <div className="flex gap-2 text-xs font-mono items-center">
                         <span className="text-emerald-400">+{pos}</span>
                         <span className="text-red-400">-{neg}</span>
-                        <button onClick={() => startEdit(it)} data-testid={`medmon-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
-                        <button onClick={() => del(it.id)} data-testid={`medmon-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
+                        <ItemActions
+                          onEdit={() => startEdit(it)}
+                          onDelete={() => del(it.id)}
+                          editTestid={`medmon-edit-${it.id}`}
+                          deleteTestid={`medmon-delete-${it.id}`}
+                        />
                       </div>
                     </div>
                     <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>

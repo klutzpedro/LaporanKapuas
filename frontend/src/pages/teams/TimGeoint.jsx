@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
+import { ItemActions } from "@/components/ActionIcons";
 import { Trash, PencilSimple, X } from "@phosphor-icons/react";
 import { MapContainer, TileLayer, Marker, Popup } from "react-leaflet";
 import L from "leaflet";
@@ -165,10 +166,12 @@ export default function TimGeoint() {
                       <td className={it.status === "aktif" ? "text-red-400" : "text-emerald-400"}>{it.status?.toUpperCase()}</td>
                       <td className="text-zinc-400">{it.lat}, {it.lon}</td>
                       <td className="text-right">
-                        <div className="inline-flex gap-1">
-                          <button onClick={() => startEdit(it)} data-testid={`geoint-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400" title="Edit"><PencilSimple size={12} weight="bold" /></button>
-                          <button onClick={() => del(it.id)} data-testid={`geoint-delete-${it.id}`} className="text-zinc-500 hover:text-red-400" title="Hapus"><Trash size={12} weight="bold" /></button>
-                        </div>
+                        <ItemActions
+                          onEdit={() => startEdit(it)}
+                          onDelete={() => del(it.id)}
+                          editTestid={`geoint-edit-${it.id}`}
+                          deleteTestid={`geoint-delete-${it.id}`}
+                        />
                       </td>
                     </tr>
                   ))}

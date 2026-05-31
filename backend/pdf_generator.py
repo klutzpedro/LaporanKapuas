@@ -8,6 +8,7 @@ If ai_html is provided, render the executive summary with rich text (bold, itali
 underline, color, font, size) via reportlab Paragraph + HTML translation.
 """
 import io
+import math
 import base64
 import re
 from datetime import datetime
@@ -390,15 +391,29 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
 PAPUA_CENTER = (138.5, -4.5)  # (lon, lat) — Tanah Papua center
 PAPUA_ZOOM = 6                # covers entire Papua mainland
 
-def render_papua_map(items, width_px=900, height_px=700):
+
+def _lon_to_x(lon, zoom):
+    return ((lon + 180.0) / 360.0) * (2 ** zoom)
+
+
+def _lat_to_y(lat, zoom):
+    rad = math.radians(lat)
+    return (
+        1.0 - math.log(math.tan(rad) + 1 / math.cos(rad)) / math.pi
+    ) / 2.0 * (2 ** zoom)
+
+
+def render_papua_map(items, width_px=900, height_px=700, draw_labels=False):
     """Render a Papua-centered map with all OPM positions plotted.
-    Aktif = red, tidak_aktif = green. Returns an ImageReader or None.
+    Aktif = red, tidak_aktif = green. If draw_labels=True, the target's NAME
+    is drawn next to each marker via PIL (used for GEOINT dedicated page).
+    Returns an ImageReader or None.
     """
     if not _HAS_STATICMAP:
         return None
     try:
         m = StaticMap(width_px, height_px, url_template="https://a.tile.openstreetmap.org/{z}/{x}/{y}.png")
-        # Plot markers
+        valid_items = []
         for it in items:
             try:
                 lat = float(it.get("lat"))
@@ -407,10 +422,73 @@ def render_papua_map(items, width_px=900, height_px=700):
                 continue
             color = "#EF4444" if it.get("status") == "aktif" else "#10B981"
             # outer ring (white) + inner colored dot for visibility on OSM tiles
-            m.add_marker(CircleMarker((lon, lat), "#FFFFFF", 14))
-            m.add_marker(CircleMarker((lon, lat), color, 10))
+            ring = 16 if draw_labels else 14
+            inner = 11 if draw_labels else 10
+            m.add_marker(CircleMarker((lon, lat), "#FFFFFF", ring))
+            m.add_marker(CircleMarker((lon, lat), color, inner))
+            valid_items.append((lat, lon, it.get("nama_orang", "-"), color))
         # Render forcing the Papua-wide view (do not auto-zoom to markers)
         image = m.render(zoom=PAPUA_ZOOM, center=PAPUA_CENTER)
+
+        # Overlay target NAME labels on top of each marker via PIL
+        if draw_labels and valid_items:
+            try:
+                from PIL import ImageDraw, ImageFont
+                draw = ImageDraw.Draw(image, "RGBA")
+                center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
+                center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
+                # Try several font paths; fall back to default if none load
+                font = None
+                for fp in [
+                    "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+                    "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+                ]:
+                    try:
+                        font = ImageFont.truetype(fp, 22)
+                        break
+                    except Exception:
+                        pass
+                if font is None:
+                    try:
+                        import reportlab
+                        rl_dir = os.path.dirname(reportlab.__file__)
+                        for cand in [
+                            os.path.join(rl_dir, "fonts", "VeraBd.ttf"),
+                            os.path.join(rl_dir, "fonts", "Vera.ttf"),
+                        ]:
+                            if os.path.exists(cand):
+                                font = ImageFont.truetype(cand, 22)
+                                break
+                    except Exception:
+                        font = None
+                if font is None:
+                    font = ImageFont.load_default()
+                for lat, lon, name, color in valid_items:
+                    mx = _lon_to_x(lon, PAPUA_ZOOM)
+                    my = _lat_to_y(lat, PAPUA_ZOOM)
+                    px = (mx - center_x) * 256 + width_px / 2
+                    py = (my - center_y) * 256 + height_px / 2
+                    label_x = int(px + 18)
+                    label_y = int(py - 12)
+                    # measure text bbox for background rect
+                    try:
+                        bbox = draw.textbbox((label_x, label_y), name, font=font)
+                        bw = bbox[2] - bbox[0] + 8
+                        bh = bbox[3] - bbox[1] + 4
+                    except Exception:
+                        bw = len(name) * 9 + 8
+                        bh = 20
+                    # White rounded background with colored left border for readability
+                    draw.rectangle(
+                        [label_x - 4, label_y - 2, label_x + bw - 4, label_y + bh - 2],
+                        fill=(255, 255, 255, 235),
+                        outline=color,
+                        width=2,
+                    )
+                    draw.text((label_x, label_y), name, fill=(15, 23, 42, 255), font=font)
+            except Exception:
+                pass  # never let label rendering break map output
+
         buf = io.BytesIO()
         image.save(buf, format="PNG")
         buf.seek(0)
@@ -950,59 +1028,77 @@ def _draw_medmon_with_images(c, x, y, w, h, data):
             c.line(x + 1 * mm, ry, x + w - 1 * mm, ry)
 
 
-def _draw_geoint_with_map(c, x, y, w, h, data):
-    c.setStrokeColor(COLOR_BORDER)
-    c.setLineWidth(0.5)
-    c.rect(x, y, w, h, stroke=1, fill=0)
-    cy = _section_header(c, x, y + h, w, "GEOINT · POSISI OPM",
-                         f"{len(data.get('geoint', []))} TITIK")
+def _draw_geoint_fullpage(c, x_left, x_right, top, bottom, data):
+    """Render the GEOINT section on its own dedicated page.
+    Layout (vertical):
+      [section header bar]
+      [compact 4-col table — full width]
+      [LARGE Papua map (~150mm tall) with target name labels]
+    """
     items = data.get("geoint", [])
+    w = x_right - x_left
+
+    # Section header bar
+    bar_h = 5 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(x_left, top - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x_left + 2 * mm, top - bar_h + 1.4 * mm, "GEOINT · POSISI OPM")
+    c.setFillColor(COLOR_AMBER)
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawRightString(x_left + w - 2 * mm, top - bar_h + 1.4 * mm, f"{len(items)} TITIK")
+    cur_y = top - bar_h - 2 * mm
+
     if not items:
-        _empty(c, x, cy - 1 * mm)
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(x_left + 2 * mm, cur_y - 4 * mm, "Tidak ada titik OPM termonitor periode ini.")
         return
-    bottom = y + 2 * mm
-    body_h = cy - bottom
 
-    # left: compact table; right: map image of first item (if any)
-    tbl_w = w * 0.55
-    img_w = w * 0.45
+    # ---------- TABLE (full width, 4 columns) ----------
+    # Render up to 14 rows.
 
-    # Column layout (relative to x):
-    #   WILAYAH:   x+2..x+22       (width 20mm)
-    #   NAMA:      x+22..x+42       (width 20mm)
-    #   KOORDINAT: x+42..x+62       (width 20mm)
-    #   STATUS:    x+(tbl_w-12) → right edge
-    col_wilayah_x = 2 * mm
-    col_nama_x = 22 * mm
-    col_koord_x = 42 * mm
-    col_status_x = tbl_w - 12 * mm
+    # Column boundaries — equal-ish widths across full page width
+    col_no_w = 8 * mm
+    col_wilayah_w = (w - col_no_w) * 0.32
+    col_nama_w = (w - col_no_w) * 0.30
+    col_koord_w = (w - col_no_w) * 0.22
+    # status fills remainder
+    cx_no = x_left + 2 * mm
+    cx_wilayah = cx_no + col_no_w
+    cx_nama = cx_wilayah + col_wilayah_w
+    cx_koord = cx_nama + col_nama_w
+    cx_status = cx_koord + col_koord_w
 
-    # table header
+    # Table header
+    c.setFillColor(COLOR_LIGHT)
+    c.rect(x_left, cur_y - 5 * mm, w, 5 * mm, stroke=0, fill=1)
     c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica-Bold", 5.5)
-    c.drawString(x + col_wilayah_x, cy - 3 * mm, "WILAYAH")
-    c.drawString(x + col_nama_x, cy - 3 * mm, "NAMA")
-    c.drawString(x + col_koord_x, cy - 3 * mm, "KOORDINAT")
-    c.drawString(x + col_status_x, cy - 3 * mm, "STATUS")
-    line_y = cy - 5 * mm
+    c.setFont("Helvetica-Bold", 6.5)
+    hy = cur_y - 3.4 * mm
+    c.drawString(cx_no, hy, "NO")
+    c.drawString(cx_wilayah, hy, "WILAYAH")
+    c.drawString(cx_nama, hy, "NAMA TARGET")
+    c.drawString(cx_koord, hy, "KOORDINAT")
+    c.drawString(cx_status, hy, "STATUS")
+    cur_y -= 5 * mm
     c.setStrokeColor(COLOR_BORDER2)
-    c.line(x + 1 * mm, line_y, x + tbl_w - 1 * mm, line_y)
+    c.setLineWidth(0.3)
+    c.line(x_left, cur_y, x_left + w, cur_y)
 
-    cur_y = line_y - 2.5 * mm
-    c.setFont("Helvetica", 6.2)
-    nama_max_w = col_koord_x - col_nama_x - 1 * mm
-    wilayah_max_w = col_nama_x - col_wilayah_x - 1 * mm
-    koord_max_w = col_status_x - col_koord_x - 1 * mm
-    for it in items[:8]:
-        if cur_y < bottom + 1 * mm:
-            break
+    # Rows
+    for idx, it in enumerate(items[:14], 1):
+        cur_y -= 4 * mm
         c.setFillColor(COLOR_TEXT)
-        c.drawString(x + col_wilayah_x, cur_y,
-                     truncate_to_width(str(it.get("wilayah", "-")), "Helvetica", 6.2, wilayah_max_w))
-        c.drawString(x + col_nama_x, cur_y,
-                     truncate_to_width(str(it.get("nama_orang", "-")), "Helvetica", 6.2, nama_max_w))
-        lat = it.get("lat")
-        lon = it.get("lon")
+        c.setFont("Helvetica", 7)
+        c.drawString(cx_no, cur_y + 0.8 * mm, str(idx))
+        c.drawString(cx_wilayah, cur_y + 0.8 * mm,
+                     truncate_to_width(str(it.get("wilayah", "-")), "Helvetica", 7, col_wilayah_w - 1 * mm))
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(cx_nama, cur_y + 0.8 * mm,
+                     truncate_to_width(str(it.get("nama_orang", "-")), "Helvetica-Bold", 7, col_nama_w - 1 * mm))
+        lat = it.get("lat"); lon = it.get("lon")
         if lat is not None and lon is not None:
             try:
                 koord = f"{float(lat):.4f}, {float(lon):.4f}"
@@ -1010,37 +1106,75 @@ def _draw_geoint_with_map(c, x, y, w, h, data):
                 koord = f"{lat}, {lon}"
         else:
             koord = "-"
-        c.setFont("Helvetica", 5.8)
-        c.drawString(x + col_koord_x, cur_y,
-                     truncate_to_width(koord, "Helvetica", 5.8, koord_max_w))
-        c.setFont("Helvetica", 6.2)
+        c.setFont("Helvetica", 6.5)
+        c.drawString(cx_koord, cur_y + 0.8 * mm,
+                     truncate_to_width(koord, "Helvetica", 6.5, col_koord_w - 1 * mm))
         is_aktif = it.get("status") == "aktif"
         c.setFillColor(COLOR_RED if is_aktif else COLOR_GREEN)
-        c.setFont("Helvetica-Bold", 5.8)
-        c.drawString(x + col_status_x, cur_y, "AKTIF" if is_aktif else "NON-AKTIF")
-        c.setFont("Helvetica", 6.2)
-        cur_y -= 2.8 * mm
+        c.setFont("Helvetica-Bold", 6.5)
+        c.drawString(cx_status, cur_y + 0.8 * mm, "AKTIF" if is_aktif else "NON-AKTIF")
+        # divider
+        c.setStrokeColor(COLOR_BORDER2)
+        c.setLineWidth(0.2)
+        c.line(x_left, cur_y, x_left + w, cur_y)
 
-    # map image: AUTO-GENERATED Papua map with all plotted markers (overrides user upload)
-    map_img = render_papua_map(items, width_px=1200, height_px=900)
+    cur_y -= 4 * mm
+
+    # ---------- LARGE PAPUA MAP with name labels ----------
+    map_top = cur_y
+    map_bottom = bottom + 2 * mm
+    map_h = map_top - map_bottom
+    if map_h < 60 * mm:
+        return  # not enough space — skip map
+
+    # Map label
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawString(x_left, map_top - 3 * mm, "PETA SEBARAN PAPUA — POSISI TARGET")
+    map_top -= 5 * mm
+    map_h = map_top - map_bottom
+
+    # Border frame
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x_left, map_bottom, w, map_h, stroke=1, fill=0)
+
+    # Render map at high resolution with name labels
+    # Aspect ratio: width:height ≈ 1.3:1 (Papua is wide). Map area native pixels:
+    map_img = render_papua_map(items, width_px=1800, height_px=1300, draw_labels=True)
     if map_img is None:
-        # Fallback to user-uploaded image (if any)
+        # Fallback: try user-uploaded image
         for it in items:
             if it.get("peta_image"):
                 map_img = decode_image(it["peta_image"])
                 break
-    c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica", 5.5)
-    c.drawString(x + tbl_w + 2 * mm, cy - 3 * mm, "PETA SEBARAN PAPUA")
     if map_img:
-        fit_image(c, map_img, x + tbl_w + 2 * mm, bottom + 1 * mm, img_w - 3 * mm, body_h - 6 * mm)
+        fit_image(c, map_img, x_left + 1 * mm, map_bottom + 1 * mm,
+                  w - 2 * mm, map_h - 2 * mm)
     else:
-        c.setFillColor(COLOR_LIGHT)
-        c.rect(x + tbl_w + 2 * mm, bottom + 1 * mm, img_w - 3 * mm, body_h - 6 * mm, stroke=0, fill=1)
         c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica-Oblique", 6)
-        c.drawCentredString(x + tbl_w + img_w / 2, bottom + body_h / 2,
-                            "(peta tidak tersedia)")
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawCentredString(x_left + w / 2, map_bottom + map_h / 2, "(peta tidak tersedia)")
+
+    # Legend overlay (bottom-right corner of map)
+    leg_w = 35 * mm
+    leg_h = 9 * mm
+    leg_x = x_left + w - leg_w - 2 * mm
+    leg_y = map_bottom + 2 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(leg_x, leg_y, leg_w, leg_h, stroke=0, fill=1)
+    c.setStrokeColor(COLOR_AMBER)
+    c.setLineWidth(0.5)
+    c.rect(leg_x, leg_y, leg_w, leg_h, stroke=1, fill=0)
+    c.setFillColor(COLOR_RED)
+    c.circle(leg_x + 3 * mm, leg_y + leg_h - 2.5 * mm, 1.2 * mm, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(leg_x + 5.5 * mm, leg_y + leg_h - 3 * mm, "AKTIF")
+    c.setFillColor(COLOR_GREEN)
+    c.circle(leg_x + 3 * mm, leg_y + 3 * mm, 1.2 * mm, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.drawString(leg_x + 5.5 * mm, leg_y + 2.5 * mm, "NON-AKTIF")
 
 
 def _draw_kontra_with_images(c, x, y, w, h, data):
@@ -1524,6 +1658,88 @@ def _draw_gal_card(c, x, y_top, w, item):
     return h
 
 
+SATGAS_LABEL_PIKET = {"tek": "SATGAS TEK", "sandi": "SATGAS SANDI", "medis": "SATGAS MEDIS"}
+SATGAS_COLOR_PIKET = {"tek": COLOR_BLUE, "sandi": COLOR_PURPLE, "medis": COLOR_RED}
+
+
+def _measure_piket_card(item, w):
+    pad = 2 * mm
+    has_img = bool(item.get("gambar"))
+    img_w = 35 * mm if has_img else 0
+    text_w = w - 2 * pad - (img_w + 2 * mm if has_img else 0)
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)[:8]
+    h = 3 * mm + 4 * mm  # badge row
+    h += 2.7 * mm * len(judul_lines) + 0.5 * mm
+    if isi_lines:
+        h += 2.4 * mm + 2.3 * mm * len(isi_lines) + 0.5 * mm
+    h += 2 * mm
+    if has_img:
+        h = max(h, 28 * mm)
+    return h
+
+
+def _draw_piket_card(c, x, y_top, w, item):
+    pad = 2 * mm
+    sat = (item.get("satgas") or "").lower()
+    sat_label = SATGAS_LABEL_PIKET.get(sat, sat.upper() or "SATGAS")
+    sat_color = SATGAS_COLOR_PIKET.get(sat, COLOR_MUTED)
+    inner_w = w - 2 * pad
+    img = decode_image(item.get("gambar"))
+    img_w = 35 * mm if img else 0
+    text_w = inner_w - (img_w + 2 * mm if img else 0)
+
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)[:8]
+
+    h = 3 * mm + 4 * mm
+    h += 2.7 * mm * len(judul_lines) + 0.5 * mm
+    if isi_lines:
+        h += 2.4 * mm + 2.3 * mm * len(isi_lines) + 0.5 * mm
+    h += 2 * mm
+    if img:
+        h = max(h, 28 * mm)
+
+    y_bot = y_top - h
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y_bot, w, h, stroke=1, fill=0)
+    c.setFillColor(sat_color)
+    c.rect(x, y_bot, 1.2 * mm, h, stroke=0, fill=1)
+
+    tx = x + pad + 1.5 * mm
+    cy = y_top - 3 * mm
+    # SATGAS badge
+    c.setFillColor(sat_color)
+    c.rect(tx, cy - 3 * mm, 22 * mm, 3 * mm, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 6)
+    c.drawString(tx + 1 * mm, cy - 3 * mm + 0.9 * mm, sat_label)
+    # Judul
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 8)
+    jy = cy - 6.5 * mm
+    for line in judul_lines:
+        c.drawString(tx, jy, line)
+        jy -= 2.7 * mm
+    # Isi
+    if isi_lines:
+        jy -= 0.3 * mm
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Bold", 5.5)
+        c.drawString(tx, jy, "ISI LAPORAN")
+        jy -= 2.2 * mm
+        c.setFillColor(COLOR_TEXT)
+        c.setFont("Helvetica", 6.5)
+        for line in isi_lines:
+            c.drawString(tx, jy, line)
+            jy -= 2.3 * mm
+    # Image (right)
+    if img:
+        fit_image(c, img, x + w - pad - img_w, y_bot + 2 * mm, img_w, h - 4 * mm)
+    return h
+
+
 # ---------- MAIN ----------
 def build_summary_pdf(data, ai_text, ai_html=None):
     buf = io.BytesIO()
@@ -1643,16 +1859,26 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     _draw_medmon_with_images(c, MARGIN, state["y"] - h_use, w, h_use, data)
     state["y"] -= h_use + 3 * mm
 
-    # GEOINT — adaptive height
-    GEOINT_MIN = 35 * mm
-    GEOINT_PREF = 75 * mm
-    rem = state["y"] - avail_bottom - 2 * mm
-    if rem < GEOINT_MIN:
+    # PIKET — laporan Satgas Tek/Sandi/Medis (placed BEFORE GEOINT per requirement)
+    piket_items = data.get("piket", [])
+    if state["y"] - 12 * mm < avail_bottom:
         new_page()
-        rem = state["y"] - avail_bottom - 2 * mm
-    h_use = min(GEOINT_PREF, rem)
-    _draw_geoint_with_map(c, MARGIN, state["y"] - h_use, w, h_use, data)
-    state["y"] -= h_use + 3 * mm
+    section_title("LAPORAN SATGAS TEK / SANDI / MEDIS (PIKET)", f"{len(piket_items)} LAPORAN")
+    if not piket_items:
+        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada laporan piket.")
+        state["y"] -= 6 * mm
+    else:
+        for it in piket_items:
+            h_est = _measure_piket_card(it, w)
+            if state["y"] - h_est < avail_bottom:
+                new_page()
+            _draw_piket_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h_est + 2 * mm
+
+    # GEOINT — DEDICATED FULL PAGE with big map + name labels
+    new_page()
+    _draw_geoint_fullpage(c, MARGIN, MARGIN + w, avail_top, avail_bottom, data)
 
     _draw_footer(c, state["page"])
     c.showPage()

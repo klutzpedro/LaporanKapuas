@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import ImageUploader from "@/components/ImageUploader";
 import { toast } from "sonner";
+import { ItemActions } from "@/components/ActionIcons";
 import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
 
 const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500/40 focus-visible:border-amber-500 mt-1.5";
@@ -158,10 +159,12 @@ export default function TimKontra() {
                       <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.data_diri}</p>
                       {it.keterangan && <p className="text-[11px] text-zinc-500 mt-1 italic">{it.keterangan}</p>}
                     </div>
-                    <div className="flex gap-1 items-start">
-                      <button onClick={() => startEdit(it)} data-testid={`kontra-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
-                      <button onClick={() => del(it.id)} data-testid={`kontra-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
-                    </div>
+                    <ItemActions
+                      onEdit={() => startEdit(it)}
+                      onDelete={() => del(it.id)}
+                      editTestid={`kontra-edit-${it.id}`}
+                      deleteTestid={`kontra-delete-${it.id}`}
+                    />
                   </div>
                 </li>
               ))}

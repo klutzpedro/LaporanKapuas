@@ -108,10 +108,25 @@ export default function Piket() {
                       <p className="font-bold text-sm mt-1">{it.judul}</p>
                       <p className="text-xs text-zinc-400 mt-1 line-clamp-3">{it.isi}</p>
                     </div>
-                    <div className="flex gap-1 items-start">
-                      <button onClick={() => startEdit(it)} data-testid={`piket-edit-${it.id}`} className="text-zinc-500 hover:text-amber-400 p-1" title="Edit"><PencilSimple size={14} weight="bold" /></button>
-                      <button onClick={() => del(it.id)} data-testid={`piket-delete-${it.id}`} className="text-zinc-500 hover:text-red-400 p-1" title="Hapus"><Trash size={14} weight="bold" /></button>
-                    </div>
+                    <ItemActions
+                      onEdit={() => startEdit(it)}
+                      onDelete={() => del(it.id)}
+                      editTestid={`piket-edit-${it.id}`}
+                      deleteTestid={`piket-delete-${it.id}`}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }) { return (<div><Label className="overline">{label}</Label>{children}</div>); }
+              </div>
                   </div>
                 </li>
               ))}
