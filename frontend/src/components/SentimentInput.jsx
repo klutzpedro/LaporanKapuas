@@ -14,8 +14,7 @@ export function SentimentInput({ value, onChange, testid = "sentiment" }) {
   const ok = total === 100;
 
   function set(k, v) {
-    const n = clamp(parseInt(v || "0", 10));
-    onChange({ ...value, [k]: n });
+    onChange({ ...value, [k]: clamp(Number(v) || 0) });
   }
 
   return (
@@ -43,10 +42,19 @@ function Row({ color, label, value, onChange, testid }) {
       <span className="text-xs font-mono uppercase tracking-wider text-zinc-400 w-16">{label}</span>
       <Input
         type="number"
+        inputMode="numeric"
         min={0}
         max={100}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
+        value={value === 0 ? "" : value}
+        placeholder="0"
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "") { onChange(0); return; }
+          const n = parseInt(v, 10);
+          if (Number.isNaN(n)) return;
+          onChange(clamp(n));
+        }}
+        onFocus={(e) => e.target.select()}
         data-testid={testid}
         className="bg-zinc-950 border-zinc-800 rounded-sm h-8 w-20 font-mono text-sm"
       />
