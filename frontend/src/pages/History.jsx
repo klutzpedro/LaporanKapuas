@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiErrorMsg } from "@/lib/api";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +29,7 @@ export default function HistoryPage() {
       const { data } = await api.get("/reports/history", { params });
       setItems(data);
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal memuat arsip.");
+      toast.error(apiErrorMsg(e, "Gagal memuat arsip."));
     } finally {
       setLoading(false);
     }
@@ -79,7 +79,7 @@ export default function HistoryPage() {
       toast.success("Arsip dihapus.");
       load({ start_date: start, end_date: end });
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menghapus.");
+      toast.error(apiErrorMsg(e, "Gagal menghapus."));
     }
   }
 

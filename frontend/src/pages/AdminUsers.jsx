@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, ROLE_LABEL } from "@/lib/api";
+import { api, ROLE_LABEL, apiErrorMsg } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
@@ -32,7 +32,7 @@ export default function AdminUsers() {
       toast.success("User dibuat.");
       setForm({ email: "", password: "", name: "", role: "tim_lid" });
       load();
-    } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal."); }
+    } catch (e2) { toast.error(apiErrorMsg(e2, "Gagal.")); }
     finally { setBusy(false); }
   }
 
@@ -51,7 +51,7 @@ export default function AdminUsers() {
       toast.success("User diperbarui.");
       cancelEdit();
       load();
-    } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal menyimpan."); }
+    } catch (e2) { toast.error(apiErrorMsg(e2, "Gagal menyimpan.")); }
     finally { setBusy(false); }
   }
 
@@ -62,7 +62,7 @@ export default function AdminUsers() {
       toast.success("User dihapus.");
       if (editId === u.id) cancelEdit();
       load();
-    } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal menghapus."); }
+    } catch (e2) { toast.error(apiErrorMsg(e2, "Gagal menghapus.")); }
   }
 
   return (

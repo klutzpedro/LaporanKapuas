@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiErrorMsg } from "@/lib/api";
 import { PageHeader, Card } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,7 @@ export default function SummaryPage() {
       setOriginalHtml(html);
       toast.success("Ringkasan AI berhasil dibuat dari data semua tim.");
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal membuat ringkasan AI.");
+      toast.error(apiErrorMsg(e, "Gagal membuat ringkasan AI."));
     } finally {
       setBusyAI(false);
     }
@@ -72,7 +72,7 @@ export default function SummaryPage() {
       setOriginalHtml(aiHtml);
       toast.success("Perubahan ringkasan tersimpan.");
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menyimpan.");
+      toast.error(apiErrorMsg(e, "Gagal menyimpan."));
     } finally {
       setBusySave(false);
     }
@@ -93,7 +93,7 @@ export default function SummaryPage() {
       setOriginalHtml("");
       toast.success("Ringkasan dihapus.");
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menghapus.");
+      toast.error(apiErrorMsg(e, "Gagal menghapus."));
     } finally {
       setBusySave(false);
     }
@@ -120,9 +120,12 @@ export default function SummaryPage() {
       if (e.response?.data instanceof Blob) {
         try {
           const text = await e.response.data.text();
-          const j = JSON.parse(text); msg = j.detail || msg;
+          const j = JSON.parse(text);
+          msg = typeof j.detail === "string" ? j.detail : msg;
         } catch { /* */ }
-      } else if (e.response?.data?.detail) msg = e.response.data.detail;
+      } else {
+        msg = apiErrorMsg(e, msg);
+      }
       toast.error(msg);
     } finally {
       setBusyPDF(false);

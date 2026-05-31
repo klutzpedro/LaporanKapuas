@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, COG_LABEL, COG_COLOR } from "@/lib/api";
+import { api, COG_LABEL, COG_COLOR, apiErrorMsg } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
@@ -79,7 +79,7 @@ export default function TimLid() {
       setForm(EMPTY); setEditId(null);
       load();
     } catch (e) {
-      toast.error(e.response?.data?.detail || "Gagal menyimpan.");
+      toast.error(apiErrorMsg(e, "Gagal menyimpan."));
     } finally { setBusy(false); }
   }
 

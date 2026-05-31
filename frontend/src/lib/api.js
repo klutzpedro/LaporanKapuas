@@ -25,6 +25,23 @@ export function formatApiErrorDetail(detail) {
   return String(detail);
 }
 
+/**
+ * Extract a safe, human-readable error message from any axios/fetch error.
+ * Always returns a STRING (never an array/object) — safe to pass to toast.error().
+ */
+export function apiErrorMsg(err, fallback = "Terjadi kesalahan.") {
+  try {
+    const data = err?.response?.data;
+    if (data == null) return err?.message || fallback;
+    if (typeof data === "string") return data || fallback;
+    if (data.detail != null) return formatApiErrorDetail(data.detail);
+    if (typeof data.message === "string") return data.message;
+    return fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export const ROLE_LABEL = {
   admin: "ADMIN",
   piket: "PIKET",

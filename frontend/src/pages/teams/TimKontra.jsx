@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api } from "@/lib/api";
+import { api, apiErrorMsg } from "@/lib/api";
 import { usePeriod } from "@/lib/usePeriod";
 import { PageHeader, Card, Empty } from "@/components/Shell";
 import { PreviousPeriodBanner } from "@/components/PreviousPeriodBanner";
@@ -68,7 +68,7 @@ export default function TimKontra() {
         toast.success("Profiling tersimpan.");
       }
       setForm(EMPTY); setEditId(null); load();
-    } catch (e2) { toast.error(e2.response?.data?.detail || "Gagal menyimpan."); }
+    } catch (e2) { toast.error(apiErrorMsg(e2, "Gagal menyimpan.")); }
     finally { setBusy(false); }
   }
 
