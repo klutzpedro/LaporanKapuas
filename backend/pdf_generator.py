@@ -406,7 +406,7 @@ def _lat_to_y(lat, zoom):
 def render_papua_map(items, width_px=900, height_px=700, draw_labels=False):
     """Render a Papua-centered map with all OPM positions plotted.
     Aktif = red, tidak_aktif = green. If draw_labels=True, the target's NAME
-    is drawn next to each marker via PIL (used for GEOINT dedicated page).
+    is drawn next to each marker via PIL with smart de-overlap.
     Returns an ImageReader or None.
     """
     if not _HAS_STATICMAP:
@@ -427,24 +427,24 @@ def render_papua_map(items, width_px=900, height_px=700, draw_labels=False):
             m.add_marker(CircleMarker((lon, lat), "#FFFFFF", ring))
             m.add_marker(CircleMarker((lon, lat), color, inner))
             valid_items.append((lat, lon, it.get("nama_orang", "-"), color))
-        # Render forcing the Papua-wide view (do not auto-zoom to markers)
         image = m.render(zoom=PAPUA_ZOOM, center=PAPUA_CENTER)
 
-        # Overlay target NAME labels on top of each marker via PIL
+        # Overlay target NAME labels with smart de-overlap algorithm
         if draw_labels and valid_items:
             try:
                 from PIL import ImageDraw, ImageFont
                 draw = ImageDraw.Draw(image, "RGBA")
                 center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
                 center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
-                # Try several font paths; fall back to default if none load
+
+                # Pick a TTF font with sane fallback chain
                 font = None
                 for fp in [
                     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
                     "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
                 ]:
                     try:
-                        font = ImageFont.truetype(fp, 22)
+                        font = ImageFont.truetype(fp, 16)
                         break
                     except Exception:
                         pass
@@ -457,37 +457,86 @@ def render_papua_map(items, width_px=900, height_px=700, draw_labels=False):
                             os.path.join(rl_dir, "fonts", "Vera.ttf"),
                         ]:
                             if os.path.exists(cand):
-                                font = ImageFont.truetype(cand, 22)
+                                font = ImageFont.truetype(cand, 16)
                                 break
                     except Exception:
                         font = None
                 if font is None:
                     font = ImageFont.load_default()
+
+                # Step 1: compute marker pixel positions
+                pts = []
                 for lat, lon, name, color in valid_items:
                     mx = _lon_to_x(lon, PAPUA_ZOOM)
                     my = _lat_to_y(lat, PAPUA_ZOOM)
                     px = (mx - center_x) * 256 + width_px / 2
                     py = (my - center_y) * 256 + height_px / 2
-                    label_x = int(px + 18)
-                    label_y = int(py - 12)
-                    # measure text bbox for background rect
+                    pts.append({"px": px, "py": py, "name": name, "color": color})
+
+                # Step 2: compute label sizes
+                def text_size(txt):
                     try:
-                        bbox = draw.textbbox((label_x, label_y), name, font=font)
-                        bw = bbox[2] - bbox[0] + 8
-                        bh = bbox[3] - bbox[1] + 4
+                        b = draw.textbbox((0, 0), txt, font=font)
+                        return b[2] - b[0], b[3] - b[1]
                     except Exception:
-                        bw = len(name) * 9 + 8
-                        bh = 20
-                    # White rounded background with colored left border for readability
-                    draw.rectangle(
-                        [label_x - 4, label_y - 2, label_x + bw - 4, label_y + bh - 2],
-                        fill=(255, 255, 255, 235),
-                        outline=color,
-                        width=2,
-                    )
-                    draw.text((label_x, label_y), name, fill=(15, 23, 42, 255), font=font)
+                        return len(txt) * 8, 16
+
+                for p in pts:
+                    tw, th = text_size(p["name"])
+                    p["tw"] = tw + 10  # padding
+                    p["th"] = th + 6
+
+                # Step 3: greedy de-overlap — sort by py (top first)
+                pts_sorted = sorted(pts, key=lambda p: p["py"])
+                placed_boxes = []  # list of (x1, y1, x2, y2)
+
+                def overlaps(b1, b2):
+                    return not (b1[2] < b2[0] or b1[0] > b2[2] or b1[3] < b2[1] or b1[1] > b2[3])
+
+                LINE_H = 22  # vertical step when conflict
+                MARKER_OFFSET = 18  # base x offset right of marker
+
+                for p in pts_sorted:
+                    label_x = int(p["px"] + MARKER_OFFSET)
+                    label_y = int(p["py"] - p["th"] / 2)
+                    # If label exceeds right edge, place it on the LEFT of marker
+                    if label_x + p["tw"] > width_px - 4:
+                        label_x = int(p["px"] - MARKER_OFFSET - p["tw"])
+                    box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
+                    # de-overlap: push label down until clear
+                    tries = 0
+                    while any(overlaps(box, b) for b in placed_boxes) and tries < 12:
+                        label_y += LINE_H
+                        box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
+                        tries += 1
+                    # Clamp inside image
+                    if box[3] > height_px - 4:
+                        # try above marker
+                        label_y = int(p["py"] - p["th"] - 12)
+                        box = (label_x, label_y, label_x + p["tw"], label_y + p["th"])
+                    placed_boxes.append(box)
+                    p["lx"] = label_x
+                    p["ly"] = label_y
+                    p["box"] = box
+
+                # Step 4: draw connector lines (faint) + label boxes + text
+                for p in pts:
+                    if "box" not in p:
+                        continue
+                    box = p["box"]
+                    # connector from marker centre to nearest box corner
+                    bx_center_x = (box[0] + box[2]) / 2
+                    bx_center_y = (box[1] + box[3]) / 2
+                    if abs(bx_center_y - p["py"]) > 6 or abs(bx_center_x - p["px"]) > 4:
+                        draw.line(
+                            [(p["px"], p["py"]), (bx_center_x, bx_center_y)],
+                            fill=(20, 20, 20, 180), width=1,
+                        )
+                    # white pill with colored left border
+                    draw.rectangle(box, fill=(255, 255, 255, 245), outline=p["color"], width=2)
+                    draw.text((box[0] + 5, box[1] + 3), p["name"], fill=(15, 23, 42, 255), font=font)
             except Exception:
-                pass  # never let label rendering break map output
+                pass
 
         buf = io.BytesIO()
         image.save(buf, format="PNG")
@@ -1139,9 +1188,14 @@ def _draw_geoint_fullpage(c, x_left, x_right, top, bottom, data):
     c.setLineWidth(0.5)
     c.rect(x_left, map_bottom, w, map_h, stroke=1, fill=0)
 
-    # Render map at high resolution with name labels
-    # Aspect ratio: width:height ≈ 1.3:1 (Papua is wide). Map area native pixels:
-    map_img = render_papua_map(items, width_px=1800, height_px=1300, draw_labels=True)
+    # Render map at high resolution with name labels.
+    # Match image aspect ratio to frame aspect (no whitespace inside the frame).
+    frame_inner_w_mm = (w - 2 * mm) / mm  # mm
+    frame_inner_h_mm = (map_h - 2 * mm) / mm
+    target_aspect = frame_inner_w_mm / max(1.0, frame_inner_h_mm)
+    map_width_px = 1800
+    map_height_px = max(800, int(map_width_px / target_aspect))
+    map_img = render_papua_map(items, width_px=map_width_px, height_px=map_height_px, draw_labels=True)
     if map_img is None:
         # Fallback: try user-uploaded image
         for it in items:
@@ -1776,6 +1830,16 @@ def build_summary_pdf(data, ai_text, ai_html=None):
             c.drawRightString(MARGIN + w - 2 * mm, state["y"] - bar_h + 1.4 * mm, count_text)
         state["y"] -= bar_h + 2 * mm
 
+    def begin_section(title, count_text, first_item_h):
+        """Ensure section header has at least `first_item_h` mm of content space
+        below it on the same page. Prevents orphan headers (judul yatim).
+        """
+        section_header_h = 7 * mm
+        min_needed = section_header_h + first_item_h
+        if state["y"] - min_needed < avail_bottom:
+            new_page()
+        section_title(title, count_text)
+
     # =========== PAGE 1: Executive Summary + 7-day Trend Chart + Sentiment Cases Strip ===========
     _draw_header(c, rd)
     cases_h = 50 * mm  # bottom strip for sentiment cases
@@ -1795,7 +1859,8 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # LID
     lid_items = data.get("lid", [])
-    section_title("BERITA TRENDING (TIM LID)", f"{len(lid_items)} ITEM")
+    first_h = _measure_lid_card(lid_items[0], w) if lid_items else 12 * mm
+    begin_section("BERITA TRENDING (TIM LID)", f"{len(lid_items)} ITEM", first_h)
     if not lid_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada berita.")
@@ -1812,9 +1877,8 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # KONTRA
     kontra_items = data.get("kontra", [])
-    if state["y"] - 12 * mm < avail_bottom:
-        new_page()
-    section_title("PROFILING (TIM KONTRA)", f"{len(kontra_items)} TO")
+    first_h = _measure_kontra_card(kontra_items[0], w) if kontra_items else 12 * mm
+    begin_section("PROFILING (TIM KONTRA)", f"{len(kontra_items)} TO", first_h)
     if not kontra_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada profiling.")
@@ -1831,9 +1895,8 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # GAL
     gal_items = data.get("gal", [])
-    if state["y"] - 12 * mm < avail_bottom:
-        new_page()
-    section_title("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN")
+    first_h = _measure_gal_card(gal_items[0], w) if gal_items else 12 * mm
+    begin_section("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN", first_h)
     if not gal_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada konten.")
@@ -1861,9 +1924,8 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # PIKET — laporan Satgas Tek/Sandi/Medis (placed BEFORE GEOINT per requirement)
     piket_items = data.get("piket", [])
-    if state["y"] - 12 * mm < avail_bottom:
-        new_page()
-    section_title("LAPORAN SATGAS TEK / SANDI / MEDIS (PIKET)", f"{len(piket_items)} LAPORAN")
+    first_h = _measure_piket_card(piket_items[0], w) if piket_items else 12 * mm
+    begin_section("LAPORAN SATGAS TEK / SANDI / MEDIS (PIKET)", f"{len(piket_items)} LAPORAN", first_h)
     if not piket_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada laporan piket.")
