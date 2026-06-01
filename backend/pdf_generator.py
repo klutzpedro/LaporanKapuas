@@ -1173,7 +1173,71 @@ def _draw_lid_strip(c, x, y, w, h, data):
                 fit_image(c, img, col_x + 0.5 * mm, bottom, col_w - 1 * mm, img_h)
 
 
+MEDMON_ROW_H = 38 * mm
+
+
+def _measure_medmon_card(item, w):
+    return MEDMON_ROW_H
+
+
+def _draw_medmon_card(c, x, y, w, it):
+    """Draw a single MEDMON subject card. Top-anchored at y.
+    Returns: card height (mm-converted, total y consumed)."""
+    row_h = MEDMON_ROW_H
+    ry = y - row_h
+    # Card border
+    c.setStrokeColor(COLOR_BORDER2)
+    c.setLineWidth(0.3)
+    c.rect(x, ry, w, row_h, stroke=1, fill=0)
+    # subject name
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 8.5)
+    subj = truncate_to_width(str(it.get("subjek", "-")).upper(),
+                             "Helvetica-Bold", 8.5, w * 0.4)
+    c.drawString(x + 2 * mm, ry + row_h - 4 * mm, subj)
+    # sentiment chips
+    positifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "positif")
+    negatifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "negatif")
+    c.setFont("Helvetica-Bold", 7)
+    c.setFillColor(COLOR_GREEN)
+    c.drawString(x + 2 * mm, ry + row_h - 7 * mm, f"+{positifs} positif")
+    c.setFillColor(COLOR_RED)
+    c.drawString(x + 20 * mm, ry + row_h - 7 * mm, f"−{negatifs} negatif")
+    # analisa
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica", 6.5)
+    text_col_w = w * 0.42 - 2 * mm
+    line_y = ry + row_h - 10 * mm
+    for ln in wrap_to_width(it.get("analisa", ""), "Helvetica", 6.5, text_col_w)[:6]:
+        c.drawString(x + 2 * mm, line_y, ln)
+        line_y -= 2.5 * mm
+    # auto pie chart from MEDMON sentiment percentages
+    img_w = w * 0.27
+    pie_x = x + w * 0.43
+    if _has_sentiment(it):
+        pie_r = min(img_w - 4 * mm, row_h - 4 * mm) / 2
+        pie_cx = pie_x + img_w / 2
+        pie_cy = ry + row_h / 2
+        draw_sentiment_pie(c, pie_cx, pie_cy, pie_r,
+                           it.get("sentiment_positif"),
+                           it.get("sentiment_negatif"),
+                           it.get("sentiment_netral"))
+    else:
+        c.setFillColor(COLOR_LIGHT)
+        c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
+    # chart sumber
+    chart_x = x + w * 0.7
+    img2 = decode_image(it.get("chart_sumber_image"))
+    if img2:
+        fit_image(c, img2, chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm)
+    else:
+        c.setFillColor(COLOR_LIGHT)
+        c.rect(chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
+    return row_h
+
+
 def _draw_medmon_with_images(c, x, y, w, h, data):
+    """LEGACY single-page MEDMON. Kept for back-compat; do not use in new flow."""
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
@@ -2129,9 +2193,11 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         # Position cursor below the continuation panel for any subsequent section
         state["y"] = avail_bottom
 
-    # =========== PAGE: 7-Day Trend Chart + Sentiment Cases Strip ===========
+    # =========== PAGE: 7-Day Trend Chart + Sentiment Cases Strip + MEDMON DETAIL ===========
     # Placed AFTER the executive summary (including REKOMENDASI) per user request,
     # so the narrative reads continuously before the supporting visuals.
+    # The MEDMON detail cards are placed RIGHT AFTER the pie chart strip so it
+    # all forms ONE coherent MEDMON block (chart → pie summary → per-subject detail).
     trend_h = 95 * mm  # larger now since it has full page width to itself
     cases_h = 70 * mm  # larger pie charts now
     new_page()
@@ -2142,9 +2208,28 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         new_page()
         state["y"] = avail_top
     _draw_sentiment_cases_strip(c, MARGIN, state["y"] - cases_h, w, cases_h, data)
-    state["y"] -= cases_h + 2 * mm
+    state["y"] -= cases_h + 3 * mm
 
-    # =========== PAGE 2+: Detail cards (auto-paginated) ===========
+    # MEDMON detail cards — all subjects, auto-paginated (no longer capped at 3)
+    medmon_items = data.get("medmon", [])
+    begin_section("MEDIA MONITORING (DETAIL PER SUBJEK)",
+                  f"{len(medmon_items)} SUBJEK",
+                  _measure_medmon_card(medmon_items[0], w) if medmon_items else 12 * mm)
+    if not medmon_items:
+        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada subjek medmon.")
+        state["y"] -= 6 * mm
+    else:
+        for it in medmon_items:
+            h_est = _measure_medmon_card(it, w)
+            if state["y"] - h_est < avail_bottom:
+                new_page()
+            _draw_medmon_card(c, MARGIN, state["y"], w, it)
+            state["y"] -= h_est + 2 * mm
+
+    state["y"] -= 2 * mm
+
+    # =========== Detail cards (auto-paginated): LID → KONTRA → GAL → PIKET ===========
     new_page()
     state["y"] = avail_top
 
@@ -2187,11 +2272,9 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     # GAL
     gal_items = data.get("gal", [])
     gal_stats = data.get("gal_stats") or {}
-    # Reserve room for stats chart (~24mm) + first card
     stats_h = 24 * mm if gal_stats else 0
     first_h = _measure_gal_card(gal_items[0], w) if gal_items else 12 * mm
     begin_section("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN", first_h + stats_h)
-    # Stats chart before content cards
     if gal_stats:
         consumed = _draw_gal_stats_chart(c, MARGIN, state["y"], w, gal_stats)
         state["y"] -= consumed
@@ -2208,17 +2291,6 @@ def build_summary_pdf(data, ai_text, ai_html=None):
             state["y"] -= h_est + 2 * mm
 
     state["y"] -= 2 * mm
-
-    # MEDMON — adaptive height (fill remaining page 2 if enough room, else new page)
-    MEDMON_MIN = 15 * mm
-    MEDMON_PREF = 65 * mm
-    rem = state["y"] - avail_bottom - 2 * mm
-    if rem < MEDMON_MIN:
-        new_page()
-        rem = state["y"] - avail_bottom - 2 * mm
-    h_use = min(MEDMON_PREF, rem)
-    _draw_medmon_with_images(c, MARGIN, state["y"] - h_use, w, h_use, data)
-    state["y"] -= h_use + 3 * mm
 
     # PIKET — laporan Satgas Tek/Sandi/Medis (placed BEFORE GEOINT per requirement)
     piket_items = data.get("piket", [])
