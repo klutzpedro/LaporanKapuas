@@ -121,26 +121,28 @@ export default function TimLid() {
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="lid-list-card">
           <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
-            <ul className="space-y-3">
-              {items.map((it) => (
-                <li key={it.id} className={`border-l-2 pl-3 py-1 ${editId === it.id ? "bg-amber-500/5" : ""}`} style={{ borderColor: COG_COLOR[it.cog] }} data-testid={`lid-item-${it.id}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm" style={{ background: `${COG_COLOR[it.cog]}22`, color: COG_COLOR[it.cog] }}>{COG_LABEL[it.cog]}</span>
-                      <p className="text-sm font-bold mt-1">{it.judul}</p>
-                      {it.link && <a href={it.link} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-amber-400 break-all">{it.link}</a>}
-                      <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
+            <div className="max-h-[420px] overflow-y-auto pr-1" data-testid="lid-list-scroll">
+              <ul className="space-y-3">
+                {items.map((it) => (
+                  <li key={it.id} className={`border-l-2 pl-3 py-1 ${editId === it.id ? "bg-amber-500/5" : ""}`} style={{ borderColor: COG_COLOR[it.cog] }} data-testid={`lid-item-${it.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm" style={{ background: `${COG_COLOR[it.cog]}22`, color: COG_COLOR[it.cog] }}>{COG_LABEL[it.cog]}</span>
+                        <p className="text-sm font-bold mt-1">{it.judul}</p>
+                        {it.link && <a href={it.link} target="_blank" rel="noreferrer" className="text-[11px] font-mono text-amber-400 break-all">{it.link}</a>}
+                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
+                      </div>
+                      <ItemActions
+                        onEdit={() => startEdit(it)}
+                        onDelete={() => del(it.id)}
+                        editTestid={`lid-edit-${it.id}`}
+                        deleteTestid={`lid-delete-${it.id}`}
+                      />
                     </div>
-                    <ItemActions
-                      onEdit={() => startEdit(it)}
-                      onDelete={() => del(it.id)}
-                      editTestid={`lid-edit-${it.id}`}
-                      deleteTestid={`lid-delete-${it.id}`}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Card>
       </div>

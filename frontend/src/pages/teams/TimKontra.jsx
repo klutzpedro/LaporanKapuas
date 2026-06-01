@@ -146,29 +146,31 @@ export default function TimKontra() {
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="kontra-list-card">
           <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
-            <ul className="space-y-3">
-              {items.map((it) => (
-                <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`kontra-item-${it.id}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-bold text-sm">{it.nama_to}</p>
-                        <span className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${it.sumber === "to_satgas" ? "bg-red-500/15 text-red-400" : "bg-blue-500/15 text-blue-400"}`}>{it.sumber?.replace("_", " ")}</span>
-                        <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">{it.tipe}</span>
+            <div className="max-h-[420px] overflow-y-auto pr-1" data-testid="kontra-list-scroll">
+              <ul className="space-y-3">
+                {items.map((it) => (
+                  <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`kontra-item-${it.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-bold text-sm">{it.nama_to}</p>
+                          <span className={`text-[9px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm ${it.sumber === "to_satgas" ? "bg-red-500/15 text-red-400" : "bg-blue-500/15 text-blue-400"}`}>{it.sumber?.replace("_", " ")}</span>
+                          <span className="text-[9px] font-mono uppercase tracking-wider text-zinc-500">{it.tipe}</span>
+                        </div>
+                        <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.data_diri}</p>
+                        {it.keterangan && <p className="text-[11px] text-zinc-500 mt-1 italic">{it.keterangan}</p>}
                       </div>
-                      <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.data_diri}</p>
-                      {it.keterangan && <p className="text-[11px] text-zinc-500 mt-1 italic">{it.keterangan}</p>}
+                      <ItemActions
+                        onEdit={() => startEdit(it)}
+                        onDelete={() => del(it.id)}
+                        editTestid={`kontra-edit-${it.id}`}
+                        deleteTestid={`kontra-delete-${it.id}`}
+                      />
                     </div>
-                    <ItemActions
-                      onEdit={() => startEdit(it)}
-                      onDelete={() => del(it.id)}
-                      editTestid={`kontra-edit-${it.id}`}
-                      deleteTestid={`kontra-delete-${it.id}`}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Card>
       </div>

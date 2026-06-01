@@ -155,30 +155,32 @@ export default function TimMedmon() {
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="medmon-list-card">
           <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
-            <ul className="space-y-3">
-              {items.map((it) => {
-                const pos = (it.berita || []).filter((b) => b.sentiment === "positif").length;
-                const neg = (it.berita || []).filter((b) => b.sentiment === "negatif").length;
-                return (
-                  <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`medmon-item-${it.id}`}>
-                    <div className="flex items-center justify-between">
-                      <p className="font-bold text-sm uppercase">{it.subjek}</p>
-                      <div className="flex gap-2 text-xs font-mono items-center">
-                        <span className="text-emerald-400">+{pos}</span>
-                        <span className="text-red-400">-{neg}</span>
-                        <ItemActions
-                          onEdit={() => startEdit(it)}
-                          onDelete={() => del(it.id)}
-                          editTestid={`medmon-edit-${it.id}`}
-                          deleteTestid={`medmon-delete-${it.id}`}
-                        />
+            <div className="max-h-[420px] overflow-y-auto pr-1" data-testid="medmon-list-scroll">
+              <ul className="space-y-3">
+                {items.map((it) => {
+                  const pos = (it.berita || []).filter((b) => b.sentiment === "positif").length;
+                  const neg = (it.berita || []).filter((b) => b.sentiment === "negatif").length;
+                  return (
+                    <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`medmon-item-${it.id}`}>
+                      <div className="flex items-center justify-between">
+                        <p className="font-bold text-sm uppercase">{it.subjek}</p>
+                        <div className="flex gap-2 text-xs font-mono items-center">
+                          <span className="text-emerald-400">+{pos}</span>
+                          <span className="text-red-400">-{neg}</span>
+                          <ItemActions
+                            onEdit={() => startEdit(it)}
+                            onDelete={() => del(it.id)}
+                            editTestid={`medmon-edit-${it.id}`}
+                            deleteTestid={`medmon-delete-${it.id}`}
+                          />
+                        </div>
                       </div>
-                    </div>
-                    <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
-                  </li>
-                );
-              })}
-            </ul>
+                      <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{it.analisa}</p>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
           )}
         </Card>
       </div>

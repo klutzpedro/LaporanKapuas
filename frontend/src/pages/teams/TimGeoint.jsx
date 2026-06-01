@@ -156,27 +156,29 @@ export default function TimGeoint() {
             <h4 className="overline mb-2">Daftar Laporan Hari Ini</h4>
             <PreviousPeriodBanner items={items} currentDate={reportDate} />
             {items.length === 0 ? <Empty /> : (
-              <table className="w-full text-xs">
-                <thead><tr className="overline text-left"><th className="pb-2">Wilayah</th><th className="pb-2">Nama</th><th className="pb-2">Status</th><th className="pb-2">Koordinat</th><th></th></tr></thead>
-                <tbody className="font-mono">
-                  {items.map((it) => (
-                    <tr key={it.id} className={`border-t border-zinc-800 ${editId === it.id ? "bg-amber-500/5" : ""}`} data-testid={`geoint-item-${it.id}`}>
-                      <td className="py-1.5">{it.wilayah}</td>
-                      <td className="py-1.5">{it.nama_orang}</td>
-                      <td className={it.status === "aktif" ? "text-red-400" : "text-emerald-400"}>{it.status?.toUpperCase()}</td>
-                      <td className="text-zinc-400">{it.lat}, {it.lon}</td>
-                      <td className="text-right">
-                        <ItemActions
-                          onEdit={() => startEdit(it)}
-                          onDelete={() => del(it.id)}
-                          editTestid={`geoint-edit-${it.id}`}
-                          deleteTestid={`geoint-delete-${it.id}`}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="max-h-[360px] overflow-y-auto pr-1" data-testid="geoint-list-scroll">
+                <table className="w-full text-xs">
+                  <thead><tr className="overline text-left"><th className="pb-2">Wilayah</th><th className="pb-2">Nama</th><th className="pb-2">Status</th><th className="pb-2">Koordinat</th><th></th></tr></thead>
+                  <tbody className="font-mono">
+                    {items.map((it) => (
+                      <tr key={it.id} className={`border-t border-zinc-800 ${editId === it.id ? "bg-amber-500/5" : ""}`} data-testid={`geoint-item-${it.id}`}>
+                        <td className="py-1.5">{it.wilayah}</td>
+                        <td className="py-1.5">{it.nama_orang}</td>
+                        <td className={it.status === "aktif" ? "text-red-400" : "text-emerald-400"}>{it.status?.toUpperCase()}</td>
+                        <td className="text-zinc-400">{it.lat}, {it.lon}</td>
+                        <td className="text-right">
+                          <ItemActions
+                            onEdit={() => startEdit(it)}
+                            onDelete={() => del(it.id)}
+                            editTestid={`geoint-edit-${it.id}`}
+                            deleteTestid={`geoint-delete-${it.id}`}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
         </Card>

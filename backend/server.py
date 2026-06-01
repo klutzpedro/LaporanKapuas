@@ -432,7 +432,7 @@ async def delete_gal(rid: str, _user: dict = Depends(require_role("tim_gal", "ad
 # ----- TIM GAL: Statistik Penggalangan per Platform -----
 # One document per report_date — upserted by tim_gal.
 # Structure: counts[kategori][platform] = int
-GAL_PLATFORMS = ["instagram", "facebook", "twitter", "tiktok", "youtube"]
+GAL_PLATFORMS = ["instagram", "facebook", "twitter", "tiktok", "youtube", "threads", "media_online"]
 GAL_CATEGORIES = ["narasi", "video", "meme"]
 
 

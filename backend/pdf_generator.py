@@ -1691,11 +1691,13 @@ def _draw_gal_stats_chart(c, x, y_top, w, gal_stats):
     Returns the height consumed.
     """
     PLATFORMS = [
-        ("instagram", "INSTAGRAM", HexColor("#E1306C")),
-        ("facebook",  "FACEBOOK",  HexColor("#1877F2")),
-        ("twitter",   "TWITTER/X", HexColor("#1DA1F2")),
-        ("tiktok",    "TIKTOK",    HexColor("#69C9D0")),
-        ("youtube",   "YOUTUBE",   HexColor("#FF0000")),
+        ("instagram",    "INSTAGRAM",    HexColor("#E1306C")),
+        ("facebook",     "FACEBOOK",     HexColor("#1877F2")),
+        ("twitter",      "TWITTER/X",    HexColor("#1DA1F2")),
+        ("tiktok",       "TIKTOK",       HexColor("#69C9D0")),
+        ("youtube",      "YOUTUBE",      HexColor("#FF0000")),
+        ("threads",      "THREADS",      HexColor("#A1A1AA")),
+        ("media_online", "MEDIA ONLINE", HexColor("#10B981")),
     ]
     CATS = [
         ("narasi", "NARASI", HexColor("#10B981")),

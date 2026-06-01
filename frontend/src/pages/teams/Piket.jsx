@@ -100,25 +100,27 @@ export default function Piket() {
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="piket-list-card">
           <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
-            <ul className="space-y-3">
-              {items.map((it) => (
-                <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`piket-item-${it.id}`}>
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1">
-                      <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-300">{SATGAS[it.satgas]}</span>
-                      <p className="font-bold text-sm mt-1">{it.judul}</p>
-                      <p className="text-xs text-zinc-400 mt-1 line-clamp-3">{it.isi}</p>
+            <div className="max-h-[420px] overflow-y-auto pr-1" data-testid="piket-list-scroll">
+              <ul className="space-y-3">
+                {items.map((it) => (
+                  <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`piket-item-${it.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1">
+                        <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-300">{SATGAS[it.satgas]}</span>
+                        <p className="font-bold text-sm mt-1">{it.judul}</p>
+                        <p className="text-xs text-zinc-400 mt-1 line-clamp-3">{it.isi}</p>
+                      </div>
+                      <ItemActions
+                        onEdit={() => startEdit(it)}
+                        onDelete={() => del(it.id)}
+                        editTestid={`piket-edit-${it.id}`}
+                        deleteTestid={`piket-delete-${it.id}`}
+                      />
                     </div>
-                    <ItemActions
-                      onEdit={() => startEdit(it)}
-                      onDelete={() => del(it.id)}
-                      editTestid={`piket-edit-${it.id}`}
-                      deleteTestid={`piket-delete-${it.id}`}
-                    />
-                  </div>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Card>
       </div>

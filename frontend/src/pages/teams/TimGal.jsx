@@ -17,13 +17,15 @@ const INP = "bg-zinc-950 border-zinc-800 rounded-sm focus-visible:ring-amber-500
 const EMPTY = { kategori: "narasi", judul: "", gambar: null, links: [""], keterangan: "" };
 const CATEGORY = { narasi: "NARASI", video: "VIDEO", meme: "MEME" };
 
-// 5 platform sosmed yang dipantau Tim GAL
+// 7 platform yang dipantau Tim GAL
 const PLATFORMS = [
-  { key: "instagram", label: "Instagram", color: "#E1306C" },
-  { key: "facebook",  label: "Facebook",  color: "#1877F2" },
-  { key: "twitter",   label: "Twitter/X", color: "#1DA1F2" },
-  { key: "tiktok",    label: "TikTok",    color: "#69C9D0" },
-  { key: "youtube",   label: "YouTube",   color: "#FF0000" },
+  { key: "instagram",    label: "Instagram",    color: "#E1306C" },
+  { key: "facebook",     label: "Facebook",     color: "#1877F2" },
+  { key: "twitter",      label: "Twitter/X",    color: "#1DA1F2" },
+  { key: "tiktok",       label: "TikTok",       color: "#69C9D0" },
+  { key: "youtube",      label: "YouTube",      color: "#FF0000" },
+  { key: "threads",      label: "Threads",      color: "#A1A1AA" },
+  { key: "media_online", label: "Media Online", color: "#10B981" },
 ];
 
 const KATEGORIES = ["narasi", "video", "meme"];
@@ -186,25 +188,27 @@ export default function TimGal() {
         <Card title="Daftar Laporan Hari Ini" kicker={`PERIODE ${periodLabel}`} testid="gal-list-card">
           <PreviousPeriodBanner items={items} currentDate={reportDate} />
           {items.length === 0 ? <Empty /> : (
-            <ul className="space-y-3">
-              {items.map((it) => (
-                <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 flex justify-between items-start gap-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`gal-item-${it.id}`}>
-                  <div className="flex-1">
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{CATEGORY[normalizeKategori(it.kategori)]}</span>
-                    <p className="font-bold text-sm mt-1">{it.judul}</p>
-                    <div className="mt-1 space-y-0.5">
-                      {(it.links || []).map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="block text-[11px] font-mono text-amber-400 break-all">{l}</a>)}
+            <div className="max-h-[480px] overflow-y-auto pr-1" data-testid="gal-list-scroll">
+              <ul className="space-y-3">
+                {items.map((it) => (
+                  <li key={it.id} className={`bg-zinc-950 border rounded-sm p-3 flex justify-between items-start gap-3 ${editId === it.id ? "border-amber-500/50" : "border-zinc-800"}`} data-testid={`gal-item-${it.id}`}>
+                    <div className="flex-1">
+                      <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-blue-500/15 text-blue-400">{CATEGORY[normalizeKategori(it.kategori)]}</span>
+                      <p className="font-bold text-sm mt-1">{it.judul}</p>
+                      <div className="mt-1 space-y-0.5">
+                        {(it.links || []).map((l, i) => <a key={i} href={l} target="_blank" rel="noreferrer" className="block text-[11px] font-mono text-amber-400 break-all">{l}</a>)}
+                      </div>
                     </div>
-                  </div>
-                  <ItemActions
-                    onEdit={() => startEdit(it)}
-                    onDelete={() => del(it.id)}
-                    editTestid={`gal-edit-${it.id}`}
-                    deleteTestid={`gal-delete-${it.id}`}
-                  />
-                </li>
-              ))}
-            </ul>
+                    <ItemActions
+                      onEdit={() => startEdit(it)}
+                      onDelete={() => del(it.id)}
+                      editTestid={`gal-edit-${it.id}`}
+                      deleteTestid={`gal-delete-${it.id}`}
+                    />
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
         </Card>
       </div>
