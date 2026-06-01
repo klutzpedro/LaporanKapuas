@@ -656,7 +656,29 @@ def render_papua_map(items, width_px=900, height_px=700, draw_labels=False, upda
                 )
 
         buf = io.BytesIO()
-        # Convert back to RGB for smaller PNG
+        # Crop image to Indonesian Papua bounds so the landmass FILLS the frame
+        try:
+            center_x_t = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
+            center_y_t = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
+
+            def _lon_px(lon):
+                return (_lon_to_x(lon, PAPUA_ZOOM) - center_x_t) * 256 + width_px / 2
+
+            def _lat_py(lat):
+                return (_lat_to_y(lat, PAPUA_ZOOM) - center_y_t) * 256 + height_px / 2
+
+            pad_px = 24  # small padding around the cropped Indo Papua rect
+            left = max(0, int(_lon_px(INDO_PAPUA_LON_MIN)) - pad_px)
+            right = min(width_px, int(_lon_px(INDO_PAPUA_LON_MAX)) + pad_px)
+            top_py = max(0, int(_lat_py(INDO_PAPUA_LAT_MAX)) - pad_px)
+            bottom_py = min(height_px, int(_lat_py(INDO_PAPUA_LAT_MIN)) + pad_px)
+            if right > left + 100 and bottom_py > top_py + 100:
+                # If banner present, keep it (re-paste later isn't worth it;
+                # banner is wider than Indonesian Papua anyway so we trim it
+                # — that's OK, update banner is also drawn on PDF caption).
+                image = image.crop((left, top_py, right, bottom_py))
+        except Exception:
+            pass
         image.convert("RGB").save(buf, format="PNG")
         buf.seek(0)
         return ImageReader(buf)
