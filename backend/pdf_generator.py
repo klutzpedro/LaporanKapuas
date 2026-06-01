@@ -401,9 +401,16 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
 
 
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
-# Papua region bounding box (rough): lat -10.5..0, lon 130..141
-PAPUA_CENTER = (138.5, -4.5)  # (lon, lat) — Tanah Papua center
-PAPUA_ZOOM = 6                # covers entire Papua mainland
+# Tightly framed to Indonesian Papua only (West Papua provinces).
+# Indonesian Papua bounds: lon ~130.8..141.0, lat ~-10.5..0.5
+PAPUA_CENTER = (137.0, -4.2)  # (lon, lat) — centered on Indonesian Papua
+PAPUA_ZOOM = 7                # tighter framing; excludes most of PNG & ocean
+
+# Mask non-Indonesian regions (PNG east of lon=141, Halmahera/Sonsorol if visible)
+INDO_PAPUA_LON_MAX = 141.02   # Indonesia-PNG border
+INDO_PAPUA_LON_MIN = 130.5    # West edge (Sorong area)
+INDO_PAPUA_LAT_MAX = 0.6      # North edge
+INDO_PAPUA_LAT_MIN = -10.6    # South edge (Merauke)
 
 # Module-level cache: (width, height) -> base PIL image of Papua with NO markers.
 # Fetching OSM tiles costs 30-60s on the first call; subsequent renders just
@@ -419,7 +426,8 @@ def _get_papua_base(width_px: int, height_px: int):
     if _PAPUA_BASE_LOCK is None:
         import threading
         _PAPUA_BASE_LOCK = threading.Lock()
-    key = (width_px, height_px)
+    # Cache key includes zoom & center so config changes invalidate cache
+    key = (width_px, height_px, PAPUA_ZOOM, PAPUA_CENTER)
     cached = _PAPUA_BASE_CACHE.get(key)
     if cached is not None:
         return cached.copy()
@@ -437,6 +445,48 @@ def _get_papua_base(width_px: int, height_px: int):
             return base_image.copy()
         except Exception:
             return None
+
+
+def _draw_non_indonesia_mask(draw, width_px: int, height_px: int):
+    """Overlay a translucent dim layer on regions outside Indonesian Papua,
+    so only the Indonesian portion of the map stands out. Computes pixel
+    bounds from PAPUA_CENTER + PAPUA_ZOOM.
+    """
+    center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
+    center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
+
+    def lon_to_px(lon):
+        return (_lon_to_x(lon, PAPUA_ZOOM) - center_x) * 256 + width_px / 2
+
+    def lat_to_py(lat):
+        return (_lat_to_y(lat, PAPUA_ZOOM) - center_y) * 256 + height_px / 2
+
+    x_east = lon_to_px(INDO_PAPUA_LON_MAX)  # east border (PNG side)
+    x_west = lon_to_px(INDO_PAPUA_LON_MIN)  # west border (Maluku side)
+    y_north = lat_to_py(INDO_PAPUA_LAT_MAX)  # north border
+    y_south = lat_to_py(INDO_PAPUA_LAT_MIN)  # south border
+
+    # Semi-transparent neutral mask (subtly de-emphasizes non-ID areas)
+    mask_fill = (240, 246, 252, 200)  # light blue-grey, mostly opaque
+    # East (PNG)
+    if x_east < width_px:
+        draw.rectangle([x_east, 0, width_px, height_px], fill=mask_fill)
+    # West (Maluku/Halmahera)
+    if x_west > 0:
+        draw.rectangle([0, 0, x_west, height_px], fill=mask_fill)
+    # North (Sonsorol/Belau)
+    if y_north > 0:
+        draw.rectangle([0, 0, width_px, y_north], fill=mask_fill)
+    # South (Arafura sea / Australia)
+    if y_south < height_px:
+        draw.rectangle([0, y_south, width_px, height_px], fill=mask_fill)
+
+    # Draw a crisp Indonesia-Papua boundary line
+    boundary_color = (220, 38, 38, 200)  # red-ish
+    draw.line([(x_east, max(0, y_north)), (x_east, min(height_px, y_south))],
+              fill=boundary_color, width=2)
+    draw.line([(x_west, max(0, y_north)), (x_west, min(height_px, y_south))],
+              fill=boundary_color, width=2)
 
 # WIB timezone helper for update banner — same as backend WIB
 try:
@@ -517,6 +567,8 @@ def render_papua_map(items, width_px=900, height_px=700, draw_labels=False, upda
         if image.mode != "RGBA":
             image = image.convert("RGBA")
         draw = ImageDraw.Draw(image, "RGBA")
+        # Apply mask over non-Indonesian regions FIRST (so markers stay on top)
+        _draw_non_indonesia_mask(draw, width_px, height_px)
         center_x = _lon_to_x(PAPUA_CENTER[0], PAPUA_ZOOM)
         center_y = _lat_to_y(PAPUA_CENTER[1], PAPUA_ZOOM)
 
