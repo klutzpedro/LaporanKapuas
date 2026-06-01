@@ -2046,18 +2046,12 @@ def build_summary_pdf(data, ai_text, ai_html=None):
             new_page()
         section_title(title, count_text)
 
-    # =========== PAGE 1: Executive Summary + 7-day Trend Chart + Sentiment Cases Strip ===========
+    # =========== PAGE 1: Executive Summary (FULL PAGE) ===========
     _draw_header(c, rd)
-    cases_h = 50 * mm  # bottom strip for sentiment cases
-    trend_h = 38 * mm  # 7-day trend chart strip
-    cases_y = avail_bottom
-    trend_y = cases_y + cases_h + 3 * mm
     sum_top = avail_top
-    sum_bottom = trend_y + trend_h + 3 * mm
+    sum_bottom = avail_bottom
     sum_h = sum_top - sum_bottom
     leftover, is_rich = _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
-    _draw_sentiment_trend_chart(c, MARGIN, trend_y, w, trend_h, data.get("medmon_trend") or {})
-    _draw_sentiment_cases_strip(c, MARGIN, cases_y, w, cases_h, data)
 
     # === Continuation pages for AI Executive Summary (if any leftover) ===
     cont_idx = 1
@@ -2082,6 +2076,21 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         cont_idx += 1
         # Position cursor below the continuation panel for any subsequent section
         state["y"] = avail_bottom
+
+    # =========== PAGE: 7-Day Trend Chart + Sentiment Cases Strip ===========
+    # Placed AFTER the executive summary (including REKOMENDASI) per user request,
+    # so the narrative reads continuously before the supporting visuals.
+    trend_h = 95 * mm  # larger now since it has full page width to itself
+    cases_h = 70 * mm  # larger pie charts now
+    new_page()
+    state["y"] = avail_top
+    _draw_sentiment_trend_chart(c, MARGIN, state["y"] - trend_h, w, trend_h, data.get("medmon_trend") or {})
+    state["y"] -= trend_h + 4 * mm
+    if state["y"] - cases_h < avail_bottom:
+        new_page()
+        state["y"] = avail_top
+    _draw_sentiment_cases_strip(c, MARGIN, state["y"] - cases_h, w, cases_h, data)
+    state["y"] -= cases_h + 2 * mm
 
     # =========== PAGE 2+: Detail cards (auto-paginated) ===========
     new_page()
