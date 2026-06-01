@@ -145,9 +145,25 @@ def draw_sentiment_pie(c, cx, cy, radius, positif, negatif, netral, show_label=T
                  ("NEG", negatif or 0, COLOR_RED),
                  ("NET", netral or 0, HexColor("#A1A1AA"))]
         top = max(parts, key=lambda p: p[1])
+        # Format value: integer -> "65%", decimal -> "70.5%" (strip trailing .0)
+        val = top[1]
+        if isinstance(val, float) and abs(val - round(val)) < 0.05:
+            val_str = f"{int(round(val))}%"
+        elif isinstance(val, float):
+            val_str = f"{val:.1f}%"
+        else:
+            val_str = f"{val}%"
+        # Auto-fit font: donut hole inner diameter = radius * 1.1; reserve 10% padding
+        target_w = radius * 1.10 * 0.85
+        base_size = radius * 0.45
+        from reportlab.pdfbase.pdfmetrics import stringWidth
+        font_size = base_size
+        tw = stringWidth(val_str, "Helvetica-Bold", font_size)
+        if tw > target_w:
+            font_size = font_size * (target_w / tw)
         c.setFillColor(top[2])
-        c.setFont("Helvetica-Bold", radius * 0.45)
-        c.drawCentredString(cx, cy - radius * 0.12, f"{top[1]}%")
+        c.setFont("Helvetica-Bold", font_size)
+        c.drawCentredString(cx, cy - radius * 0.12, val_str)
         c.setFillColor(white)
         c.setFont("Helvetica-Bold", radius * 0.2)
         c.drawCentredString(cx, cy - radius * 0.36, top[0])
@@ -365,14 +381,23 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
         pie_cy = cy + 5 * mm + pie_r
         draw_sentiment_pie(c, pie_cx, pie_cy, pie_r, case["p"], case["n"], case["u"])
         # tiny legend at bottom
+        def _fmt_pct(v):
+            try:
+                if isinstance(v, float) and abs(v - round(v)) < 0.05:
+                    return f"{int(round(v))}%"
+                if isinstance(v, float):
+                    return f"{v:.1f}%"
+                return f"{v}%"
+            except Exception:
+                return f"{v}%"
         c.setFont("Helvetica", 5)
         legend_y = cy + 1.5 * mm
         c.setFillColor(COLOR_GREEN)
-        c.drawString(cx + 2 * mm, legend_y, f"+{case['p']}%")
+        c.drawString(cx + 2 * mm, legend_y, f"+{_fmt_pct(case['p'])}")
         c.setFillColor(COLOR_RED)
-        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.34, legend_y, f"-{case['n']}%")
+        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.34, legend_y, f"-{_fmt_pct(case['n'])}")
         c.setFillColor(HexColor("#71717A"))
-        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.67, legend_y, f"~{case['u']}%")
+        c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.67, legend_y, f"~{_fmt_pct(case['u'])}")
 
 
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
