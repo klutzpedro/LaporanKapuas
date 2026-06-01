@@ -429,6 +429,84 @@ async def delete_gal(rid: str, _user: dict = Depends(require_role("tim_gal", "ad
     return {"ok": True}
 
 
+# ----- TIM GAL: Statistik Penggalangan per Platform -----
+# One document per report_date — upserted by tim_gal.
+# Structure: counts[kategori][platform] = int
+GAL_PLATFORMS = ["instagram", "facebook", "twitter", "tiktok", "youtube"]
+GAL_CATEGORIES = ["narasi", "video", "meme"]
+
+
+class GalStatsPayload(BaseModel):
+    counts: dict[str, dict[str, int]] = Field(default_factory=dict)
+    report_date: Optional[str] = None
+
+    @field_validator("counts", mode="before")
+    @classmethod
+    def _normalize_counts(cls, v):
+        if not isinstance(v, dict):
+            return {}
+        out = {}
+        for cat in GAL_CATEGORIES:
+            row = v.get(cat) or {}
+            out[cat] = {p: int(max(0, row.get(p) or 0)) for p in GAL_PLATFORMS}
+        return out
+
+
+@api.post("/gal/stats")
+async def upsert_gal_stats(
+    payload: GalStatsPayload,
+    user: dict = Depends(require_role("tim_gal", "admin")),
+):
+    rd = payload.report_date or today_wib_date_str()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    doc = {
+        "report_date": rd,
+        "counts": payload.counts,
+        "updated_at": now_iso,
+        "updated_by": user["id"],
+        "updated_by_name": user.get("name", ""),
+    }
+    await db.gal_stats_reports.update_one(
+        {"report_date": rd},
+        {"$set": doc, "$setOnInsert": {"created_at": now_iso}},
+        upsert=True,
+    )
+    return {"ok": True, **doc}
+
+
+@api.get("/gal/stats")
+async def get_gal_stats(
+    report_date: Optional[str] = None,
+    fallback_previous: bool = False,
+    _user: dict = Depends(get_current_user),
+):
+    rd = report_date or today_wib_date_str()
+    doc = await db.gal_stats_reports.find_one({"report_date": rd})
+    if not doc and fallback_previous:
+        from datetime import date as _d, timedelta as _td
+        try:
+            prev = (_d.fromisoformat(rd) - _td(days=1)).isoformat()
+            doc = await db.gal_stats_reports.find_one({"report_date": prev})
+        except Exception:
+            pass
+    if not doc:
+        # Empty zeros
+        return {
+            "report_date": rd,
+            "counts": {c: {p: 0 for p in GAL_PLATFORMS} for c in GAL_CATEGORIES},
+            "updated_at": None,
+        }
+    doc.pop("_id", None)
+    # Backfill missing categories/platforms
+    counts = doc.get("counts") or {}
+    for c in GAL_CATEGORIES:
+        counts.setdefault(c, {})
+        for p in GAL_PLATFORMS:
+            counts[c].setdefault(p, 0)
+    doc["counts"] = counts
+    return doc
+
+
 # ===================== TIM MEDMON =====================
 class MedmonItem(BaseModel):
     judul: str
@@ -543,11 +621,15 @@ async def collect_daily_data(report_date: str) -> dict:
     medmon = [_serialize(d) async for d in db.medmon_reports.find(q)]
     geoint = [_serialize(d) async for d in db.geoint_reports.find(q)]
     piket = [_serialize(d) async for d in db.piket_reports.find(q)]
+    # Tim GAL platform statistics (one doc per report_date)
+    gal_stats_doc = await db.gal_stats_reports.find_one(q)
+    gal_stats = (gal_stats_doc or {}).get("counts") or {}
     return {
         "report_date": report_date,
         "lid": lid,
         "kontra": kontra,
         "gal": gal,
+        "gal_stats": gal_stats,
         "medmon": medmon,
         "geoint": geoint,
         "piket": piket,
@@ -860,6 +942,7 @@ async def startup():
             await db[coll].create_index([("report_date", 1), ("updated_at", -1)])
         await db.generated_reports.create_index("report_date", unique=True)
         await db.ai_summaries.create_index("report_date", unique=True)
+        await db.gal_stats_reports.create_index("report_date", unique=True)
         await db.users.create_index("email", unique=True)
         logger.info("Indexes ensured for high-concurrency reads.")
     except Exception as e:

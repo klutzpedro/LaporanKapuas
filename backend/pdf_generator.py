@@ -1660,6 +1660,107 @@ def _draw_kontra_card(c, x, y_top, w, item):
     return h
 
 
+def _draw_gal_stats_chart(c, x, y_top, w, gal_stats):
+    """Draw the Tim GAL platform statistics as a stacked horizontal bar chart.
+    gal_stats shape: {"narasi": {plat:int,...}, "video": {...}, "meme": {...}}
+    Returns the height consumed.
+    """
+    PLATFORMS = [
+        ("instagram", "INSTAGRAM", HexColor("#E1306C")),
+        ("facebook",  "FACEBOOK",  HexColor("#1877F2")),
+        ("twitter",   "TWITTER/X", HexColor("#1DA1F2")),
+        ("tiktok",    "TIKTOK",    HexColor("#69C9D0")),
+        ("youtube",   "YOUTUBE",   HexColor("#FF0000")),
+    ]
+    CATS = [
+        ("narasi", "NARASI", HexColor("#10B981")),
+        ("video",  "VIDEO",  HexColor("#3B82F6")),
+        ("meme",   "MEME",   HexColor("#EC4899")),
+    ]
+    # Per-platform totals
+    rows = []
+    grand = 0
+    for pkey, plabel, pcolor in PLATFORMS:
+        seg = {}
+        total = 0
+        for ckey, _clabel, _ccolor in CATS:
+            v = int((gal_stats.get(ckey) or {}).get(pkey) or 0)
+            seg[ckey] = v
+            total += v
+        grand += total
+        rows.append({"key": pkey, "label": plabel, "color": pcolor, "seg": seg, "total": total})
+
+    # Chart frame
+    title_h = 4 * mm
+    row_h = 4 * mm
+    legend_h = 4 * mm
+    chart_h = title_h + len(rows) * row_h + legend_h + 4 * mm
+
+    # Subheading bar (lighter than section header)
+    c.setFillColor(COLOR_LIGHT)
+    c.rect(x, y_top - title_h, w, title_h, stroke=0, fill=1)
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 6.5)
+    c.drawString(x + 2 * mm, y_top - title_h + 1.2 * mm, "STATISTIK PENGGALANGAN PER PLATFORM")
+    c.setFillColor(COLOR_AMBER)
+    c.drawRightString(x + w - 2 * mm, y_top - title_h + 1.2 * mm, f"TOTAL {grand} POST")
+
+    cur_y = y_top - title_h - 1.5 * mm
+    label_w = 22 * mm
+    count_w = 28 * mm
+    bar_x = x + label_w + 1 * mm
+    bar_w_max = w - label_w - count_w - 2 * mm
+
+    max_total = max(1, max(r["total"] for r in rows))
+
+    for r in rows:
+        # platform label (left)
+        c.setFillColor(r["color"])
+        c.setFont("Helvetica-Bold", 6)
+        c.drawString(x + 1.5 * mm, cur_y - 2.5 * mm, r["label"])
+        # bar background
+        c.setFillColor(HexColor("#1F1F23"))
+        c.rect(bar_x, cur_y - 3 * mm, bar_w_max, 2.4 * mm, stroke=0, fill=1)
+        # stacked segments
+        if r["total"] > 0:
+            seg_x = bar_x
+            full_w = (r["total"] / max_total) * bar_w_max
+            for ckey, _, ccolor in CATS:
+                v = r["seg"][ckey]
+                if v <= 0:
+                    continue
+                seg_w = (v / r["total"]) * full_w
+                c.setFillColor(ccolor)
+                c.rect(seg_x, cur_y - 3 * mm, seg_w, 2.4 * mm, stroke=0, fill=1)
+                seg_x += seg_w
+        # numbers (right)
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica", 5.2)
+        n_str = (
+            f"N {r['seg']['narasi']}  ·  V {r['seg']['video']}  ·  M {r['seg']['meme']}  "
+        )
+        c.drawRightString(x + w - 6 * mm, cur_y - 2.4 * mm, n_str)
+        c.setFillColor(COLOR_AMBER)
+        c.setFont("Helvetica-Bold", 6)
+        c.drawRightString(x + w - 1.5 * mm, cur_y - 2.4 * mm, str(r["total"]))
+        cur_y -= row_h
+
+    # Legend strip
+    cur_y -= 1 * mm
+    lx = x + 1.5 * mm
+    c.setFont("Helvetica-Bold", 5.5)
+    for ckey, clabel, ccolor in CATS:
+        c.setFillColor(ccolor)
+        c.rect(lx, cur_y - 2.2 * mm, 2 * mm, 2 * mm, stroke=0, fill=1)
+        c.setFillColor(COLOR_TEXT)
+        c.drawString(lx + 3 * mm, cur_y - 2 * mm, clabel)
+        # width of " LABEL " ≈ len*1.4mm
+        lx += 3 * mm + len(clabel) * 1.5 * mm + 4 * mm
+    cur_y -= legend_h
+
+    return chart_h + 2 * mm  # plus small bottom gap
+
+
 def _draw_gal_card(c, x, y_top, w, item):
     pad = 2 * mm
     cat = (item.get("kategori") or "").upper()
@@ -1925,8 +2026,15 @@ def build_summary_pdf(data, ai_text, ai_html=None):
 
     # GAL
     gal_items = data.get("gal", [])
+    gal_stats = data.get("gal_stats") or {}
+    # Reserve room for stats chart (~24mm) + first card
+    stats_h = 24 * mm if gal_stats else 0
     first_h = _measure_gal_card(gal_items[0], w) if gal_items else 12 * mm
-    begin_section("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN", first_h)
+    begin_section("KONTEN / NARASI / MEME (TIM GAL)", f"{len(gal_items)} KONTEN", first_h + stats_h)
+    # Stats chart before content cards
+    if gal_stats:
+        consumed = _draw_gal_stats_chart(c, MARGIN, state["y"], w, gal_stats)
+        state["y"] -= consumed
     if not gal_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada konten.")
