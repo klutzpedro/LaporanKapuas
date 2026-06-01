@@ -8,10 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { SentimentInput } from "@/components/SentimentInput";
 import { toast } from "sonner";
 import { ItemActions } from "@/components/ActionIcons";
-import { Plus, Trash, PencilSimple, X } from "@phosphor-icons/react";
+import { Plus, PencilSimple, X } from "@phosphor-icons/react";
 
 const EMPTY = {
   cog: "aceh",
@@ -21,9 +20,6 @@ const EMPTY = {
   analisa: "",
   tindakan: "",
   rekomendasi: "",
-  sentiment_positif: 0,
-  sentiment_negatif: 0,
-  sentiment_netral: 0,
 };
 
 export default function TimLid() {
@@ -52,9 +48,6 @@ export default function TimLid() {
       analisa: it.analisa || "",
       tindakan: it.tindakan || "",
       rekomendasi: it.rekomendasi || "",
-      sentiment_positif: it.sentiment_positif || 0,
-      sentiment_negatif: it.sentiment_negatif || 0,
-      sentiment_netral: it.sentiment_netral || 0,
     });
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -63,11 +56,6 @@ export default function TimLid() {
 
   async function submit(e) {
     e.preventDefault();
-    const total = (form.sentiment_positif || 0) + (form.sentiment_negatif || 0) + (form.sentiment_netral || 0);
-    if (Math.abs(total - 100) >= 0.01) {
-      toast.error(`Total sentiment harus 100% (sekarang ${total.toFixed(2)}%).`);
-      return;
-    }
     setBusy(true);
     try {
       if (editId) {
@@ -116,11 +104,6 @@ export default function TimLid() {
             <Field label="Analisa"><Textarea data-testid="lid-analisa" value={form.analisa} onChange={(e) => set("analisa", e.target.value)} className={INP} rows={3} /></Field>
             <Field label="Tindakan Satgas"><Textarea data-testid="lid-tindakan" value={form.tindakan} onChange={(e) => set("tindakan", e.target.value)} className={INP} rows={2} /></Field>
             <Field label="Rekomendasi BAIS"><Textarea data-testid="lid-rekomendasi" value={form.rekomendasi} onChange={(e) => set("rekomendasi", e.target.value)} className={INP} rows={2} /></Field>
-            <SentimentInput
-              value={{ positif: form.sentiment_positif, negatif: form.sentiment_negatif, netral: form.sentiment_netral }}
-              onChange={(v) => setForm((f) => ({ ...f, sentiment_positif: v.positif, sentiment_negatif: v.negatif, sentiment_netral: v.netral }))}
-              testid="lid-sentiment"
-            />
             <div className="flex gap-2">
               <Button type="submit" disabled={busy} data-testid="lid-submit" className="flex-1 bg-amber-500 hover:bg-amber-400 text-zinc-950 btn-tactical rounded-sm h-10">
                 {editId ? <PencilSimple size={14} weight="bold" className="mr-2" /> : <Plus size={14} weight="bold" className="mr-2" />}

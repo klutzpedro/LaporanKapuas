@@ -35,6 +35,12 @@ db = client[os.environ["DB_NAME"]]
 
 JWT_ALGORITHM = "HS256"
 WIB = timezone(timedelta(hours=7))
+# Reporting window cutoff (WIB). Data entered BEFORE this hour belongs to the
+# PREVIOUS day's reporting window. After this hour, data belongs to the new day.
+# Example with CUTOFF_HOUR_WIB = 9: at 09:01 WIB today, yesterday's data is
+# archived and all forms reset for today's new window.
+CUTOFF_HOUR_WIB = 9
+CUTOFF_MINUTE_WIB = 0
 ALLOWED_ROLES = {"admin", "piket", "tim_lid", "tim_kontra", "tim_gal", "tim_medmon", "tim_geoint"}
 COG_CHOICES = {"aceh", "jakarta", "indonesia", "papua", "internasional"}
 
@@ -245,18 +251,18 @@ async def delete_user(uid: str, user: dict = Depends(require_role("admin"))):
 # We store: collection per team, each doc has report_date (YYYY-MM-DD), created_by, created_at, payload fields.
 
 def today_wib_date_str() -> str:
-    """Effective input date — aligned to 12:00 WIB cycle.
-    Items entered BEFORE 12:00 WIB belong to the previous day's reporting window."""
+    """Effective input date — aligned to CUTOFF_HOUR_WIB cycle.
+    Items entered BEFORE the cutoff hour belong to the previous day's reporting window."""
     now = datetime.now(WIB)
-    if now.time() < dtime(12, 0):
+    if now.time() < dtime(CUTOFF_HOUR_WIB, CUTOFF_MINUTE_WIB):
         return (now.date() - timedelta(days=1)).isoformat()
     return now.date().isoformat()
 
 
 def report_date_for_generation() -> str:
-    """If before 12:00 WIB -> yesterday, otherwise -> today."""
+    """If before cutoff hour WIB -> yesterday, otherwise -> today."""
     now = datetime.now(WIB)
-    if now.time() < dtime(12, 0):
+    if now.time() < dtime(CUTOFF_HOUR_WIB, CUTOFF_MINUTE_WIB):
         return (now.date() - timedelta(days=1)).isoformat()
     return now.date().isoformat()
 
@@ -309,9 +315,6 @@ class LidIn(BaseModel):
     analisa: str
     tindakan: str
     rekomendasi: str
-    sentiment_positif: float = 0
-    sentiment_negatif: float = 0
-    sentiment_netral: float = 0
 
 
 @api.post("/lid")
@@ -597,13 +600,17 @@ async def daily(report_date: Optional[str] = None, _user: dict = Depends(get_cur
 
 @api.get("/daily/info")
 async def daily_info(_user: dict = Depends(get_current_user)):
-    """Returns the effective report date (yesterday if before 12 WIB, else today) and now WIB."""
+    """Returns the effective report date (yesterday if before cutoff WIB, else today) and now WIB."""
     now = datetime.now(WIB)
+    cutoff = dtime(CUTOFF_HOUR_WIB, CUTOFF_MINUTE_WIB)
     return {
         "now_wib": now.isoformat(),
         "report_date": report_date_for_generation(),
         "input_date": today_wib_date_str(),
-        "before_noon": now.time() < dtime(12, 0),
+        "before_cutoff": now.time() < cutoff,
+        "before_noon": now.time() < cutoff,  # legacy alias for older clients
+        "cutoff_hour": CUTOFF_HOUR_WIB,
+        "cutoff_minute": CUTOFF_MINUTE_WIB,
     }
 
 
@@ -672,12 +679,14 @@ async def get_ai_summary(report_date: Optional[str] = None, _user: dict = Depend
 # ===================== PDF GENERATION =====================
 @api.get("/pdf")
 async def generate_pdf(report_date: Optional[str] = None, user: dict = Depends(require_role("admin", "piket"))):
-    # Determine date with the 12 WIB rule
+    # Determine date with the cutoff hour WIB rule
     today = datetime.now(WIB).date().isoformat()
     rd = report_date or report_date_for_generation()
-    if rd == today and datetime.now(WIB).time() < dtime(12, 0):
-        raise HTTPException(status_code=400,
-                            detail="Laporan tanggal hari ini hanya bisa di-generate setelah pukul 12:00 WIB.")
+    if rd == today and datetime.now(WIB).time() < dtime(CUTOFF_HOUR_WIB, CUTOFF_MINUTE_WIB):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Laporan tanggal hari ini hanya bisa di-generate setelah pukul {CUTOFF_HOUR_WIB:02d}:{CUTOFF_MINUTE_WIB:02d} WIB.",
+        )
     data = await collect_daily_data(rd)
     # 7-day MEDMON sentiment trend for the trend chart on page 1
     data["medmon_trend"] = await collect_medmon_7day_trend(rd)

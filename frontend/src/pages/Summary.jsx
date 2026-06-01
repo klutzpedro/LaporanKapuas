@@ -185,9 +185,9 @@ export default function SummaryPage() {
               <ArrowsClockwise size={11} />
               Default ({info?.report_date || "—"})
             </button>
-            {info?.before_noon && reportDate === info?.report_date && (
+            {(info?.before_cutoff ?? info?.before_noon) && reportDate === info?.report_date && (
               <p className="mt-3 text-[11px] text-amber-400 font-mono leading-relaxed">
-                ⚠ Saat ini sebelum 12:00 WIB. Default ke H-1 ({info.report_date}).
+                ⚠ Saat ini sebelum {String(info?.cutoff_hour ?? 9).padStart(2,"0")}:{String(info?.cutoff_minute ?? 0).padStart(2,"0")} WIB. Default ke H-1 ({info.report_date}).
               </p>
             )}
           </Card>
@@ -196,7 +196,7 @@ export default function SummaryPage() {
             <ul className="space-y-3 text-xs text-zinc-300 leading-relaxed">
               <li className="flex gap-2">
                 <Clock size={14} className="text-amber-400 shrink-0 mt-0.5" />
-                <span>Laporan hari ini hanya dapat di-generate setelah <b className="text-amber-400">12:00 WIB</b>.</span>
+                <span>Laporan hari ini hanya dapat di-generate setelah <b className="text-amber-400">{String(info?.cutoff_hour ?? 9).padStart(2,"0")}:{String(info?.cutoff_minute ?? 0).padStart(2,"0")} WIB</b>.</span>
               </li>
               <li className="flex gap-2">
                 <Robot size={14} className="text-amber-400 shrink-0 mt-0.5" />

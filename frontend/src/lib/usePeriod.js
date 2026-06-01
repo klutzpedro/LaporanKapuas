@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 
-/** Compute the current reporting window aligned to 12:00 WIB cycle:
- *  - Before 12:00 WIB → window is YESTERDAY 12:00 → TODAY 12:00 (report_date = yesterday)
- *  - After 12:00 WIB → window is TODAY 12:00 → TOMORROW 12:00 (report_date = today)
+/** Compute the current reporting window. The cutoff hour comes from /daily/info.
+ *  - Before cutoff → window is YESTERDAY cutoff → TODAY cutoff (report_date = yesterday)
+ *  - After cutoff → window is TODAY cutoff → TOMORROW cutoff (report_date = today)
  */
 export function usePeriod() {
   const [info, setInfo] = useState(null);
@@ -12,9 +12,11 @@ export function usePeriod() {
   }, []);
 
   const reportDate = info?.report_date || "";
-  const beforeNoon = !!info?.before_noon;
+  const beforeCutoff = !!(info?.before_cutoff ?? info?.before_noon);
+  const hh = String(info?.cutoff_hour ?? 9).padStart(2, "0");
+  const mm = String(info?.cutoff_minute ?? 0).padStart(2, "0");
+  const cutoffLabel = `${hh}:${mm}`;
 
-  // Period label
   function periodLabel() {
     if (!reportDate) return "—";
     const start = new Date(reportDate + "T00:00:00");
@@ -22,8 +24,15 @@ export function usePeriod() {
     end.setDate(end.getDate() + 1);
     const fmt = (d) =>
       d.toLocaleDateString("id-ID", { day: "2-digit", month: "short", year: "numeric" }).toUpperCase();
-    return `${fmt(start)} 12:00 — ${fmt(end)} 12:00 WIB`;
+    return `${fmt(start)} ${cutoffLabel} — ${fmt(end)} ${cutoffLabel} WIB`;
   }
 
-  return { info, reportDate, beforeNoon, periodLabel: periodLabel() };
+  return {
+    info,
+    reportDate,
+    beforeNoon: beforeCutoff, // legacy alias
+    beforeCutoff,
+    cutoffLabel,
+    periodLabel: periodLabel(),
+  };
 }

@@ -305,19 +305,8 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 8)
     c.drawString(x + 2 * mm, y + h - bar_h + 1.4 * mm, "RINGKASAN SENTIMENT PER KASUS")
-    # collect cases
+    # collect cases — MEDMON only (LID no longer has sentiment as of 2026-05)
     cases = []
-    for it in data.get("lid", []):
-        if _has_sentiment(it):
-            cases.append({
-                "kind": "LID",
-                "kind_color": COG_COLORS.get(it.get("cog", ""), COLOR_MUTED),
-                "label": (it.get("cog") or "").upper(),
-                "title": it.get("judul", "—"),
-                "p": it.get("sentiment_positif") or 0,
-                "n": it.get("sentiment_negatif") or 0,
-                "u": it.get("sentiment_netral") or 0,
-            })
     for it in data.get("medmon", []):
         if _has_sentiment(it):
             cases.append({
@@ -1408,9 +1397,7 @@ def _has_sentiment(item):
 def _measure_lid_card(item, w):
     pad = 2 * mm
     inner_w = w - 2 * pad
-    has_pie = _has_sentiment(item)
-    img_w = 32 * mm if has_pie else 0
-    text_w = inner_w - (img_w + 2 * mm if img_w else 0)
+    text_w = inner_w
     judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
     link = (item.get("link") or "").strip()
     link_lines = wrap_to_width(link, "Helvetica", 6, text_w)[:2] if link else []
@@ -1427,8 +1414,6 @@ def _measure_lid_card(item, w):
     for lines in blocks:
         h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
     h += 2 * mm
-    if img_w:
-        h = max(h, img_w * 0.6 + 4 * mm)
     return h
 
 
@@ -1490,9 +1475,7 @@ def _draw_lid_card(c, x, y_top, w, item):
     cog = item.get("cog", "")
     cog_color = COG_COLORS.get(cog, COLOR_MUTED)
     inner_w = w - 2 * pad
-    has_pie = _has_sentiment(item)
-    img_w = 32 * mm if has_pie else 0
-    text_w = inner_w - (img_w + 2 * mm if img_w else 0)
+    text_w = inner_w
 
     # measure text content height
     judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
@@ -1516,8 +1499,6 @@ def _draw_lid_card(c, x, y_top, w, item):
     for _, lines in blocks:
         h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
     h += 2 * mm  # bottom
-    if img_w:
-        h = max(h, img_w * 0.6 + 4 * mm)  # at least image height
 
     y_bot = y_top - h
     # background card
@@ -1563,16 +1544,6 @@ def _draw_lid_card(c, x, y_top, w, item):
         for line in lines:
             c.drawString(tx, jy, line)
             jy -= 2.3 * mm
-
-    # sentiment pie (right side)
-    if img_w:
-        pie_radius = min(img_w, h - 4 * mm) / 2 - 2 * mm
-        pie_cx = x + w - pad - img_w / 2
-        pie_cy = y_bot + h / 2
-        draw_sentiment_pie(c, pie_cx, pie_cy, pie_radius,
-                           item.get("sentiment_positif"),
-                           item.get("sentiment_negatif"),
-                           item.get("sentiment_netral"))
 
     return h
 

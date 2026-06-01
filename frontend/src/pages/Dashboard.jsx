@@ -43,7 +43,7 @@ export default function Dashboard() {
         title="Control Room"
         subtitle={
           info
-            ? `Tanggal laporan aktif: ${info.report_date} • ${info.before_noon ? "Sebelum 12:00 WIB (menampilkan H-1)" : "Setelah 12:00 WIB (hari ini)"}`
+            ? `Tanggal laporan aktif: ${info.report_date} • ${(info.before_cutoff ?? info.before_noon) ? `Sebelum ${String(info.cutoff_hour ?? 9).padStart(2,"0")}:${String(info.cutoff_minute ?? 0).padStart(2,"0")} WIB (menampilkan H-1)` : `Setelah ${String(info.cutoff_hour ?? 9).padStart(2,"0")}:${String(info.cutoff_minute ?? 0).padStart(2,"0")} WIB (hari ini)`}`
             : ""
         }
         right={
