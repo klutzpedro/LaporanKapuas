@@ -401,12 +401,12 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
 
 
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
-# Tightly framed to Indonesian Papua only (West Papua provinces).
-# Indonesian Papua bounds: lon ~130.8..141.0, lat ~-10.5..0.5
-PAPUA_CENTER = (137.0, -4.2)  # (lon, lat) — centered on Indonesian Papua
-PAPUA_ZOOM = 7                # tighter framing; excludes most of PNG & ocean
+# Render full Papua region at zoom 6 (same physical size as before).
+# Mask layer covers non-Indonesian areas so visually ONLY Tanah Papua tampil.
+PAPUA_CENTER = (138.5, -4.5)  # (lon, lat) — Tanah Papua center
+PAPUA_ZOOM = 6                # original zoom — keeps map physically large
 
-# Mask non-Indonesian regions (PNG east of lon=141, Halmahera/Sonsorol if visible)
+# Indonesian Papua bounds — anything outside is masked
 INDO_PAPUA_LON_MAX = 141.02   # Indonesia-PNG border
 INDO_PAPUA_LON_MIN = 130.5    # West edge (Sorong area)
 INDO_PAPUA_LAT_MAX = 0.6      # North edge
@@ -466,8 +466,11 @@ def _draw_non_indonesia_mask(draw, width_px: int, height_px: int):
     y_north = lat_to_py(INDO_PAPUA_LAT_MAX)  # north border
     y_south = lat_to_py(INDO_PAPUA_LAT_MIN)  # south border
 
-    # Semi-transparent neutral mask (subtly de-emphasizes non-ID areas)
-    mask_fill = (240, 246, 252, 200)  # light blue-grey, mostly opaque
+    # Opaque mask matching the OSM ocean color, so non-ID areas blend as if
+    # they were ocean — Tanah Papua becomes the only visible landmass.
+    # OSM 'mapnik' ocean tone ≈ (170, 211, 223). Use FULLY opaque so PNG,
+    # Halmahera, Sonsorol, etc are completely hidden.
+    mask_fill = (170, 211, 223, 255)
     # East (PNG)
     if x_east < width_px:
         draw.rectangle([x_east, 0, width_px, height_px], fill=mask_fill)
@@ -481,11 +484,10 @@ def _draw_non_indonesia_mask(draw, width_px: int, height_px: int):
     if y_south < height_px:
         draw.rectangle([0, y_south, width_px, height_px], fill=mask_fill)
 
-    # Draw a crisp Indonesia-Papua boundary line
-    boundary_color = (220, 38, 38, 200)  # red-ish
+    # Draw a thin red boundary line along Indonesia–PNG border (east side)
+    # for clarity. Skip west boundary since Maluku islands aren't a hard border.
+    boundary_color = (200, 30, 30, 220)
     draw.line([(x_east, max(0, y_north)), (x_east, min(height_px, y_south))],
-              fill=boundary_color, width=2)
-    draw.line([(x_west, max(0, y_north)), (x_west, min(height_px, y_south))],
               fill=boundary_color, width=2)
 
 # WIB timezone helper for update banner — same as backend WIB
