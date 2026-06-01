@@ -916,13 +916,11 @@ HEADING_RE = re.compile(
 
 def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
     """Draws the AI executive summary into the given frame.
-    Returns (leftover_flowables_list, is_richtext_bool). If leftover is
-    non-empty, the caller should render the remaining items on continuation
-    pages.
+    Returns (leftover_flowables_list, is_richtext_bool, content_bottom_y).
+    If leftover is non-empty, the caller should render the remaining items on
+    continuation pages. content_bottom_y is where the actual content ended
+    (so caller can flow next sections naturally below if there's space).
     """
-    c.setStrokeColor(COLOR_BORDER)
-    c.setLineWidth(0.5)
-    c.rect(x, y, w, h, stroke=1, fill=0)
     title_y = _panel_title(c, x, y + h, w, "EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN")
 
     # Frame for paragraph flow (with inner padding)
@@ -940,16 +938,32 @@ def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
         blocks = html_to_paragraphs(ai_html, base_size_pt=8.5)
         flowables = _blocks_to_flowables(blocks)
         leftover = _fill_frame(frame, c, flowables)
-        return leftover, True
+        try:
+            content_bottom = frame._y
+        except Exception:
+            content_bottom = frame_y
+        # Draw tight border around panel (top of header → just below content)
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.5)
+        c.rect(x, content_bottom - pad_b, w,
+               (y + h) - (content_bottom - pad_b), stroke=1, fill=0)
+        return leftover, True, content_bottom
 
-    # Plain text fallback (previous behavior). Build flowables-like list so
-    # overflow can also continue on subsequent pages with the same code path.
+    # Plain text fallback (previous behavior).
     text = ai_text or _fallback_summary(data)
     text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
     text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
     flowables = _plain_text_to_flowables(text)
     leftover = _fill_frame(frame, c, flowables)
-    return leftover, False
+    try:
+        content_bottom = frame._y
+    except Exception:
+        content_bottom = frame_y
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(x, content_bottom - pad_b, w,
+           (y + h) - (content_bottom - pad_b), stroke=1, fill=0)
+    return leftover, False, content_bottom
 
 
 def _blocks_to_flowables(blocks):
@@ -2191,7 +2205,9 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     sum_top = avail_top
     sum_bottom = avail_bottom
     sum_h = sum_top - sum_bottom
-    leftover, is_rich = _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
+    leftover, is_rich, exec_content_bottom = _draw_executive_summary(
+        c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
+    state["y"] = exec_content_bottom - 2 * mm
 
     # === Continuation pages for AI Executive Summary (if any leftover) ===
     cont_idx = 1
@@ -2205,27 +2221,41 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         frame_y = avail_bottom
         frame_w = w - 8 * mm
         frame_h = cont_title_y - frame_y - 2 * mm
-        # Draw border around the continuation panel
-        c.setStrokeColor(COLOR_BORDER)
-        c.setLineWidth(0.5)
-        c.rect(MARGIN, frame_y - 1 * mm, w, cont_title_y - frame_y + 7 * mm, stroke=1, fill=0)
         cont_frame = Frame(frame_x, frame_y, frame_w, frame_h,
                            leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
                            showBoundary=0)
         leftover = _fill_frame(cont_frame, c, leftover)
         cont_idx += 1
-        # Position cursor below the continuation panel for any subsequent section
-        state["y"] = avail_bottom
+        # Track where content actually ended in the frame so the next section
+        # can flow below it instead of jumping to next page.
+        try:
+            content_bottom = cont_frame._y
+        except Exception:
+            content_bottom = avail_bottom
+        # Tight border around the panel (top of header → just below content)
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.5)
+        c.rect(MARGIN,
+               content_bottom - 1 * mm,
+               w,
+               cont_title_y - content_bottom + 7 * mm,
+               stroke=1, fill=0)
+        state["y"] = content_bottom - 2 * mm
 
-    # =========== PAGE: 7-Day Trend Chart + Sentiment Cases Strip + MEDMON DETAIL ===========
-    # Placed AFTER the executive summary (including REKOMENDASI) per user request,
-    # so the narrative reads continuously before the supporting visuals.
-    # The MEDMON detail cards are placed RIGHT AFTER the pie chart strip so it
-    # all forms ONE coherent MEDMON block (chart → pie summary → per-subject detail).
-    trend_h = 95 * mm  # larger now since it has full page width to itself
-    cases_h = 70 * mm  # larger pie charts now
-    new_page()
-    state["y"] = avail_top
+    # =========== TREND CHART + PIE CHART STRIP + MEDMON DETAIL ===========
+    # Continue from where the executive summary ends — fill the leftover space
+    # on the current page instead of always starting a new page (user wants
+    # supporting visuals to flow naturally below the narrative).
+    trend_h = 95 * mm
+    cases_h = 70 * mm
+    # If executive summary ended exactly at page bottom, state["y"] is at
+    # avail_bottom; ensure we have at least trend_h+breathing room or new_page.
+    if state["y"] - trend_h < avail_bottom:
+        new_page()
+        state["y"] = avail_top
+    else:
+        # Small breathing gap below executive summary panel
+        state["y"] -= 4 * mm
     _draw_sentiment_trend_chart(c, MARGIN, state["y"] - trend_h, w, trend_h, data.get("medmon_trend") or {})
     state["y"] -= trend_h + 4 * mm
     if state["y"] - cases_h < avail_bottom:
