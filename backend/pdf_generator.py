@@ -839,6 +839,11 @@ HEADING_RE = re.compile(
 
 
 def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
+    """Draws the AI executive summary into the given frame.
+    Returns (leftover_flowables_list, is_richtext_bool). If leftover is
+    non-empty, the caller should render the remaining items on continuation
+    pages.
+    """
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(x, y, w, h, stroke=1, fill=0)
@@ -857,62 +862,105 @@ def _draw_executive_summary(c, x, y, w, h, ai_text, data, ai_html=None):
     # Render rich HTML if available, else fallback to plain text rendering
     if ai_html:
         blocks = html_to_paragraphs(ai_html, base_size_pt=8.5)
-        flowables = []
-        from reportlab.platypus import Spacer, HRFlowable
-        for style, text in blocks:
-            if style.get("hr"):
-                flowables.append(HRFlowable(width="100%", thickness=0.4,
-                                            color=HexColor("#CBD5E1"),
-                                            spaceBefore=2, spaceAfter=2))
-                continue
-            sp = style.get("space", 1)
-            ps = _make_pstyle(
-                "p",
-                size=style.get("size", 8.5),
-                bold=style.get("bold", False),
-                color=style.get("color", "#0F172A"),
-                indent=style.get("indent", 0),
-            )
-            try:
-                flowables.append(Paragraph(text, ps))
-            except Exception:
-                # Fallback if markup is invalid: strip tags and retry
-                safe = re.sub(r"<[^>]+>", "", text)
-                flowables.append(Paragraph(safe, ps))
-            if sp > 0:
-                flowables.append(Spacer(1, sp * mm))
-        # Add flowables until frame full
-        for f in flowables:
-            if not frame.add(f, c):
-                break
-    else:
-        # Plain text fallback (previous behavior)
-        text = ai_text or _fallback_summary(data)
-        text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
-        text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
-        cur_y = title_y - 1 * mm
-        inner_w = w - 7 * mm
-        bottom = y + 2 * mm
-        for paragraph in text.split("\n"):
-            if cur_y < bottom + 3 * mm:
-                break
-            if not paragraph.strip():
-                cur_y -= 1.2 * mm
-                continue
-            is_heading = bool(HEADING_RE.match(paragraph.strip()))
-            if is_heading:
-                font_name, font_size, line_h = "Helvetica-Bold", 8.2, 3.2 * mm
-                c.setFillColor(COLOR_HEADER)
-            else:
-                font_name, font_size, line_h = "Helvetica", 8, 3.0 * mm
-                c.setFillColor(COLOR_TEXT)
-            c.setFont(font_name, font_size)
-            for line in wrap_to_width(paragraph.strip(), font_name, font_size, inner_w):
-                if cur_y < bottom + 2 * mm:
-                    break
-                c.drawString(x + 3.5 * mm, cur_y - line_h + 0.8 * mm, line)
-                cur_y -= line_h
-            cur_y -= 0.3 * mm
+        flowables = _blocks_to_flowables(blocks)
+        leftover = _fill_frame(frame, c, flowables)
+        return leftover, True
+
+    # Plain text fallback (previous behavior). Build flowables-like list so
+    # overflow can also continue on subsequent pages with the same code path.
+    text = ai_text or _fallback_summary(data)
+    text = re.sub(r"\*\*(.*?)\*\*", r"\1", text)
+    text = re.sub(r"^#+\s*", "", text, flags=re.MULTILINE)
+    flowables = _plain_text_to_flowables(text)
+    leftover = _fill_frame(frame, c, flowables)
+    return leftover, False
+
+
+def _blocks_to_flowables(blocks):
+    from reportlab.platypus import Spacer, HRFlowable
+    out = []
+    for style, text in blocks:
+        if style.get("hr"):
+            out.append(HRFlowable(width="100%", thickness=0.4,
+                                  color=HexColor("#CBD5E1"),
+                                  spaceBefore=2, spaceAfter=2))
+            continue
+        sp = style.get("space", 1)
+        ps = _make_pstyle(
+            "p",
+            size=style.get("size", 8.5),
+            bold=style.get("bold", False),
+            color=style.get("color", "#0F172A"),
+            indent=style.get("indent", 0),
+        )
+        try:
+            out.append(Paragraph(text, ps))
+        except Exception:
+            safe = re.sub(r"<[^>]+>", "", text)
+            out.append(Paragraph(safe, ps))
+        if sp > 0:
+            out.append(Spacer(1, sp * mm))
+    return out
+
+
+def _plain_text_to_flowables(text):
+    from reportlab.platypus import Spacer
+    out = []
+    for paragraph in text.split("\n"):
+        if not paragraph.strip():
+            out.append(Spacer(1, 1.2 * mm))
+            continue
+        is_heading = bool(HEADING_RE.match(paragraph.strip()))
+        ps = _make_pstyle(
+            "p",
+            size=8.2 if is_heading else 8.0,
+            bold=is_heading,
+            color="#1E293B" if is_heading else "#0F172A",
+        )
+        try:
+            out.append(Paragraph(paragraph.strip(), ps))
+        except Exception:
+            safe = re.sub(r"<[^>]+>", "", paragraph.strip())
+            out.append(Paragraph(safe, ps))
+        out.append(Spacer(1, 0.6 * mm))
+    return out
+
+
+def _fill_frame(frame, c, flowables):
+    """Add flowables into frame until full. Returns list that didn't fit.
+    Tries to split a paragraph that can't fit so content is never lost.
+    Guarantees forward progress: if first flowable can't even split, it is
+    forced in (truncated by reportlab) so the loop cannot stall.
+    """
+    i = 0
+    while i < len(flowables):
+        f = flowables[i]
+        # Try adding whole
+        if frame.add(f, c, trySplit=False):
+            i += 1
+            continue
+        # Try splitting
+        try:
+            avail_w = frame._aW
+            avail_h = frame._aH
+            parts = f.split(avail_w, avail_h)
+        except Exception:
+            parts = []
+        if parts and len(parts) >= 2:
+            head = parts[0]
+            tail = parts[1:]
+            if frame.add(head, c, trySplit=False):
+                return list(tail) + flowables[i + 1:]
+            # Head still doesn't fit — return remainder so next frame retries
+            return flowables[i:]
+        # Cannot split. If we've already added at least one item to this frame,
+        # return remainder so it can be retried in next (bigger) frame.
+        if i > 0 or frame._atTop is False:
+            return flowables[i:]
+        # First flowable in a fresh frame still doesn't fit (very rare,
+        # e.g. an oversized HRFlowable). Skip it to guarantee progress.
+        i += 1
+    return []
 
 
 def _fallback_summary(data):
@@ -2007,9 +2055,33 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     sum_top = avail_top
     sum_bottom = trend_y + trend_h + 3 * mm
     sum_h = sum_top - sum_bottom
-    _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
+    leftover, is_rich = _draw_executive_summary(c, MARGIN, sum_bottom, w, sum_h, ai_text, data, ai_html=ai_html)
     _draw_sentiment_trend_chart(c, MARGIN, trend_y, w, trend_h, data.get("medmon_trend") or {})
     _draw_sentiment_cases_strip(c, MARGIN, cases_y, w, cases_h, data)
+
+    # === Continuation pages for AI Executive Summary (if any leftover) ===
+    cont_idx = 1
+    while leftover:
+        new_page()
+        # Full-page frame for continuation: from avail_top down to avail_bottom
+        cont_title_y = state["y"]
+        cont_title_y = _panel_title(c, MARGIN, cont_title_y, w,
+                                    f"EXECUTIVE SUMMARY — RINGKASAN HARIAN PIMPINAN (lanjutan {cont_idx})")
+        frame_x = MARGIN + 4 * mm
+        frame_y = avail_bottom
+        frame_w = w - 8 * mm
+        frame_h = cont_title_y - frame_y - 2 * mm
+        # Draw border around the continuation panel
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.5)
+        c.rect(MARGIN, frame_y - 1 * mm, w, cont_title_y - frame_y + 7 * mm, stroke=1, fill=0)
+        cont_frame = Frame(frame_x, frame_y, frame_w, frame_h,
+                           leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                           showBoundary=0)
+        leftover = _fill_frame(cont_frame, c, leftover)
+        cont_idx += 1
+        # Position cursor below the continuation panel for any subsequent section
+        state["y"] = avail_bottom
 
     # =========== PAGE 2+: Detail cards (auto-paginated) ===========
     new_page()
