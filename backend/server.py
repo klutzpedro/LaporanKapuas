@@ -9,7 +9,7 @@ import os
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta, time as dtime, date as ddate
-from typing import Optional, List, Literal
+from typing import Optional, List, Literal, Dict, Any
 
 import bcrypt
 import jwt
@@ -610,6 +610,166 @@ async def update_piket(rid: str, payload: PiketIn, user: dict = Depends(require_
 async def delete_piket(rid: str, _user: dict = Depends(require_role("piket", "admin"))):
     await db.piket_reports.delete_one({"_id": ObjectId(rid)})
     return {"ok": True}
+
+
+# ===================== SEARCH ACROSS ALL REPORTS =====================
+import re as _re_search
+
+
+def _strip_html_lite(s: str) -> str:
+    """Strip basic HTML tags so search text matches plainly."""
+    if not s:
+        return ""
+    return _re_search.sub(r"<[^>]+>", " ", str(s))
+
+
+def _make_snippets(text: str, query: str, max_snips: int = 3,
+                   context_chars: int = 90) -> List[Dict[str, Any]]:
+    """Find query occurrences and return up to max_snips of {snippet, start} dicts.
+    `start` is the offset in the FULL text where the match begins (so frontend
+    can scroll to it). `snippet` is a short context around the match."""
+    if not text or not query:
+        return []
+    out = []
+    plain = text
+    qlow = query.lower()
+    plow = plain.lower()
+    pos = 0
+    while pos < len(plow) and len(out) < max_snips:
+        idx = plow.find(qlow, pos)
+        if idx < 0:
+            break
+        s = max(0, idx - context_chars)
+        e = min(len(plain), idx + len(query) + context_chars)
+        prefix = "..." if s > 0 else ""
+        suffix = "..." if e < len(plain) else ""
+        out.append({
+            "snippet": prefix + plain[s:e] + suffix,
+            "match_at": idx,
+            "match_len": len(query),
+        })
+        pos = idx + len(query)
+    return out
+
+
+SEARCHABLE_COLLECTIONS = [
+    # (collection_name, type_key, title_field, searchable_fields, badge)
+    ("lid_reports", "lid", "judul",
+     ["judul", "fakta", "analisa", "tindakan", "rekomendasi", "link", "cog"], "TIM LID"),
+    ("kontra_reports", "kontra", "nama_to",
+     ["nama_to", "data_diri", "keterangan", "sumber", "tipe"], "TIM KONTRA"),
+    ("gal_reports", "gal", "judul",
+     ["judul", "keterangan", "kategori"], "TIM GAL"),
+    ("medmon_reports", "medmon", "subjek",
+     ["subjek", "ringkasan", "analisa", "rekomendasi"], "TIM MEDMON"),
+    ("piket_reports", "piket", "judul",
+     ["judul", "isi", "satgas"], "PIKET"),
+    ("geoint_reports", "geoint", "nama_orang",
+     ["nama_orang", "wilayah", "status"], "TIM GEOINT"),
+]
+
+
+@api.get("/search")
+async def search_reports(
+    q: str = "",
+    limit: int = 50,
+    _user: dict = Depends(get_current_user),
+):
+    """Full-text search across all team reports. Returns matching items with
+    snippets so the UI can preview & highlight. Case-insensitive."""
+    q = (q or "").strip()
+    if len(q) < 2:
+        return {"query": q, "total": 0, "results": []}
+
+    safe_q = _re_search.escape(q)
+    rx = {"$regex": safe_q, "$options": "i"}
+
+    results: List[Dict[str, Any]] = []
+    for coll_name, type_key, title_field, fields, badge in SEARCHABLE_COLLECTIONS:
+        # Build OR filter — also search special list field for GAL (links)
+        or_clauses = [{f: rx} for f in fields]
+        if type_key == "gal":
+            or_clauses.append({"links": rx})
+        if type_key == "kontra":
+            or_clauses.append({"medsos": rx})
+        try:
+            cursor = db[coll_name].find({"$or": or_clauses}).limit(int(limit))
+            async for doc in cursor:
+                # Build a flat text representation for snippet extraction
+                pieces = []
+                doc_view: Dict[str, Any] = {}
+                for f in fields + (["links"] if type_key == "gal" else []) + (["medsos"] if type_key == "kontra" else []):
+                    v = doc.get(f)
+                    if v is None:
+                        continue
+                    if isinstance(v, list):
+                        for item in v:
+                            if isinstance(item, str):
+                                pieces.append((f, item))
+                                doc_view[f] = doc_view.get(f, []) + [item] if isinstance(doc_view.get(f), list) else [item]
+                    else:
+                        s = _strip_html_lite(str(v))
+                        if s:
+                            pieces.append((f, s))
+                            doc_view[f] = s
+                # Find snippets per field
+                field_snippets: List[Dict[str, Any]] = []
+                for f, txt in pieces:
+                    sn = _make_snippets(txt, q, max_snips=2, context_chars=70)
+                    for s in sn:
+                        s["field"] = f
+                        field_snippets.append(s)
+                    if len(field_snippets) >= 5:
+                        break
+                if not field_snippets:
+                    # fallback: include first 120 chars of any populated field
+                    for f, txt in pieces[:1]:
+                        field_snippets.append({
+                            "field": f, "snippet": txt[:160],
+                            "match_at": -1, "match_len": 0,
+                        })
+                results.append({
+                    "id": str(doc.get("_id")),
+                    "type": type_key,
+                    "badge": badge,
+                    "report_date": doc.get("report_date") or "",
+                    "title": str(doc.get(title_field, "") or "Tanpa Judul"),
+                    "snippets": field_snippets[:5],
+                    "full_doc": _serialize_doc_for_search(doc, type_key),
+                })
+                if len(results) >= int(limit):
+                    break
+        except Exception as e:
+            log.warning(f"search error in {coll_name}: {e}")
+        if len(results) >= int(limit):
+            break
+
+    # Sort: most recent first
+    results.sort(key=lambda r: (r.get("report_date") or "", r.get("title", "")), reverse=True)
+    return {"query": q, "total": len(results), "results": results[: int(limit)]}
+
+
+def _serialize_doc_for_search(doc: dict, type_key: str) -> dict:
+    """Return a plain JSON-safe dict for the document with HTML stripped where
+    relevant, ready for the frontend preview."""
+    out = {}
+    for k, v in doc.items():
+        if k == "_id":
+            continue
+        if isinstance(v, ObjectId):
+            out[k] = str(v)
+        elif isinstance(v, datetime):
+            out[k] = v.isoformat()
+        elif isinstance(v, list):
+            out[k] = [
+                _strip_html_lite(i) if isinstance(i, str) else i for i in v
+            ]
+        elif isinstance(v, str):
+            out[k] = _strip_html_lite(v)
+        else:
+            out[k] = v
+    out["_type"] = type_key
+    return out
 
 
 # ===================== AGGREGATION / DAILY DATA =====================
