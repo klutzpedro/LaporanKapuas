@@ -892,12 +892,12 @@ def html_to_paragraphs(html: str, base_size_pt: float = 8.5) -> list:
     return blocks
 
 
-def _make_pstyle(name, size, bold=False, color="#0F172A", indent=0):
+def _make_pstyle(name, size, bold=False, color="#0F172A", indent=0, leading=None):
     return ParagraphStyle(
         name=name,
         fontName="Helvetica-Bold" if bold else "Helvetica",
         fontSize=size,
-        leading=size * 1.25,
+        leading=leading if leading is not None else size * 1.25,
         textColor=HexColor(color),
         alignment=TA_LEFT,
         leftIndent=indent,
@@ -1621,27 +1621,77 @@ def _has_sentiment(item):
             + (item.get("sentiment_netral") or 0)) > 0
 
 
+def _lid_card_flowables(item, inner_w):
+    """Build a list of flowables for one LID card body (NOT including the
+    outer card frame border or COG badge). Returns flowables list."""
+    from reportlab.platypus import Paragraph, Spacer
+
+    flowables = []
+    # Judul
+    judul = item.get("judul", "—") or "—"
+    ps_judul = _make_pstyle("lid_judul", size=8, bold=True, color="#0F172A")
+    flowables.append(Paragraph(_safe_html(judul), ps_judul))
+
+    # Link
+    link = (item.get("link") or "").strip()
+    if link:
+        ps_link = _make_pstyle("lid_link", size=6, color="#B45309")
+        flowables.append(Spacer(1, 0.6 * mm))
+        flowables.append(Paragraph(f'<u>{_safe_html(link)}</u>', ps_link))
+
+    # Each block (FAKTA / ANALISA / TINDAKAN / REKOMENDASI) — FULL text, no truncation
+    for key, label in [("fakta", "FAKTA"), ("analisa", "ANALISA"),
+                       ("tindakan", "TINDAKAN SATGAS"),
+                       ("rekomendasi", "REKOMENDASI BAIS")]:
+        val = (item.get(key) or "").strip()
+        if not val:
+            continue
+        flowables.append(Spacer(1, 1.4 * mm))
+        ps_lbl = _make_pstyle("lid_lbl", size=5.5, bold=True, color="#64748B")
+        ps_body = _make_pstyle("lid_body", size=6.8, color="#0F172A", leading=8.4)
+        flowables.append(Paragraph(label, ps_lbl))
+        flowables.append(Spacer(1, 0.6 * mm))
+        # Preserve line breaks from input by converting \n -> <br/>
+        body_html = _safe_html(val).replace("\n", "<br/>")
+        flowables.append(Paragraph(body_html, ps_body))
+    return flowables
+
+
+def _safe_html(text: str) -> str:
+    """Escape HTML special chars for ReportLab Paragraph except already-tagged."""
+    if not text:
+        return ""
+    # Strip any existing HTML tags first (input may come from rich text editor)
+    plain = re.sub(r"<[^>]+>", "", str(text))
+    return (plain.replace("&", "&amp;")
+                 .replace("<", "&lt;")
+                 .replace(">", "&gt;"))
+
+
+def _measure_flowables_height(flowables, width):
+    """Measure total height needed for a list of flowables at given width."""
+    total = 0
+    for f in flowables:
+        try:
+            w_, h_ = f.wrap(width, 100000)
+            total += h_
+            if hasattr(f, "spaceBefore"):
+                total += f.spaceBefore
+            if hasattr(f, "spaceAfter"):
+                total += f.spaceAfter
+        except Exception:
+            total += 5 * mm
+    return total
+
+
 def _measure_lid_card(item, w):
     pad = 2 * mm
-    inner_w = w - 2 * pad
-    text_w = inner_w
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
-    link = (item.get("link") or "").strip()
-    link_lines = wrap_to_width(link, "Helvetica", 6, text_w)[:2] if link else []
-    blocks = []
-    for key in ["fakta", "analisa", "tindakan", "rekomendasi"]:
-        val = (item.get(key) or "").strip()
-        if val:
-            lines = wrap_to_width(val, "Helvetica", 6.5, text_w)[:4]
-            blocks.append(lines)
-    h = 3 * mm + 4 * mm
-    h += 2.7 * mm * len(judul_lines)
-    if link_lines:
-        h += 1 * mm + 2.2 * mm * len(link_lines)
-    for lines in blocks:
-        h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
-    h += 2 * mm
-    return h
+    inner_w = w - 2 * pad - 1.5 * mm
+    flowables = _lid_card_flowables(item, inner_w)
+    # Card overhead: top padding + COG badge (3mm) + bottom padding
+    overhead = 3 * mm + 3 * mm + 2.5 * mm + 2 * mm
+    content_h = _measure_flowables_height(flowables, inner_w)
+    return overhead + content_h
 
 
 def _measure_kontra_card(item, w):
@@ -1653,10 +1703,10 @@ def _measure_kontra_card(item, w):
     has_imgs = bool(sna_img or lainnya_img)
     img_block_w = 38 * mm if has_imgs else 0
     text_w = inner_w - (img_block_w + 2 * mm if has_imgs else 0)
-    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)[:5]
-    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)
     medsos_lines = []
-    for m in medsos[:6]:
+    for m in medsos:
         for ln in wrap_to_width(m, "Helvetica", 6, text_w):
             medsos_lines.append(ln)
     h = 3 * mm + 4 * mm + 0.5 * mm
@@ -1678,13 +1728,13 @@ def _measure_gal_card(item, w):
     has_img = bool(item.get("gambar"))
     img_w = 40 * mm if has_img else 0
     text_w = inner_w - (img_w + 2 * mm if has_img else 0)
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:3]
     links = [lk for lk in (item.get("links") or []) if lk]
     link_lines = []
-    for ln in links[:8]:
+    for ln in links:
         for w_ln in wrap_to_width(ln, "Helvetica", 6, text_w):
             link_lines.append(w_ln)
-    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)
     h = 3 * mm + 4 * mm
     h += 2.7 * mm * len(judul_lines) + 0.5 * mm
     if link_lines:
@@ -1697,82 +1747,103 @@ def _measure_gal_card(item, w):
     return h
 
 
-def _draw_lid_card(c, x, y_top, w, item):
+def _draw_lid_card(c, x, y_top, w, item, max_height=None):
+    """Draw an LID card. If content exceeds max_height (when given), the
+    overflow flowables are returned as `leftover` so caller can render the
+    rest on the next page. When `max_height` is None, the card grows to fit
+    all its content.
+
+    Returns (card_height_drawn, leftover_flowables_or_None).
+    """
+    from reportlab.platypus import Frame
     pad = 2 * mm
     cog = item.get("cog", "")
     cog_color = COG_COLORS.get(cog, COLOR_MUTED)
-    inner_w = w - 2 * pad
-    text_w = inner_w
+    inner_w = w - 2 * pad - 1.5 * mm
 
-    # measure text content height
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
-    link = (item.get("link") or "").strip()
-    link_lines = wrap_to_width(link, "Helvetica", 6, text_w)[:2] if link else []
+    flowables = _lid_card_flowables(item, inner_w)
+    natural_h = _measure_lid_card(item, w)
 
-    blocks = []
-    for key, label in [("fakta", "FAKTA"), ("analisa", "ANALISA"),
-                       ("tindakan", "TINDAKAN SATGAS"), ("rekomendasi", "REKOMENDASI BAIS")]:
-        val = (item.get(key) or "").strip()
-        if val:
-            lines = wrap_to_width(val, "Helvetica", 6.5, text_w)[:4]
-            blocks.append((label, lines))
+    # Decide actual card height
+    if max_height is None or natural_h <= max_height:
+        card_h = natural_h
+        clipped_flowables = flowables
+        leftover = None
+    else:
+        card_h = max_height
+        # Fit subset into available height; remainder becomes leftover
+        clipped_flowables = flowables
+        leftover = "__SPLIT__"  # marker; computed below by Frame
 
-    # estimate height
-    h = 3 * mm  # top
-    h += 4 * mm  # COG badge + judul row
-    h += 2.5 * mm * len(judul_lines)
-    if link_lines:
-        h += 1 * mm + 2.2 * mm * len(link_lines)
-    for _, lines in blocks:
-        h += 2.8 * mm + 2.3 * mm * len(lines) + 0.5 * mm
-    h += 2 * mm  # bottom
+    y_bot = y_top - card_h
 
-    y_bot = y_top - h
-    # background card
+    # Outer border + COG side stripe
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.4)
-    c.rect(x, y_bot, w, h, stroke=1, fill=0)
-    # left color stripe
+    c.rect(x, y_bot, w, card_h, stroke=1, fill=0)
     c.setFillColor(cog_color)
-    c.rect(x, y_bot, 1.2 * mm, h, stroke=0, fill=1)
+    c.rect(x, y_bot, 1.2 * mm, card_h, stroke=0, fill=1)
 
+    # COG badge at top
     tx = x + pad + 1.5 * mm
     cy = y_top - 3 * mm
-    # COG badge
     c.setFillColor(cog_color)
     c.rect(tx, cy - 3 * mm, 18 * mm, 3 * mm, stroke=0, fill=1)
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 6)
     c.drawString(tx + 1 * mm, cy - 3 * mm + 0.9 * mm, COG_LABEL.get(cog, cog.upper()))
-    # judul
-    c.setFillColor(COLOR_HEADER)
-    c.setFont("Helvetica-Bold", 8)
-    jy = cy - 6.5 * mm
-    for line in judul_lines:
-        c.drawString(tx, jy, line)
-        jy -= 2.7 * mm
-    # link
-    if link_lines:
-        c.setFillColor(COLOR_AMBER_DARK)
-        c.setFont("Helvetica", 6)
-        jy -= 0.5 * mm
-        for line in link_lines:
-            c.drawString(tx, jy, line)
-            jy -= 2.2 * mm
-    # blocks
-    for label, lines in blocks:
-        jy -= 0.5 * mm
-        c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica-Bold", 5.5)
-        c.drawString(tx, jy, label)
-        jy -= 2.4 * mm
-        c.setFillColor(COLOR_TEXT)
-        c.setFont("Helvetica", 6.5)
-        for line in lines:
-            c.drawString(tx, jy, line)
-            jy -= 2.3 * mm
 
-    return h
+    # Body frame (below COG badge)
+    frame_top = cy - 3.6 * mm
+    frame_bottom = y_bot + 2 * mm
+    frame_h = frame_top - frame_bottom
+    body_frame = Frame(tx, frame_bottom, inner_w, frame_h,
+                       leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                       showBoundary=0)
+    remainder = _fill_frame(body_frame, c, clipped_flowables)
+    if remainder:
+        # Card content overflowed — return leftover so caller can continue
+        return card_h, remainder
+    return card_h, None
+
+
+def _draw_lid_card_continuation(c, x, y_top, w, item, leftover_flowables, max_height):
+    """Draw the continuation of an LID card on a new page. Returns
+    (height_drawn, leftover_flowables_or_None)."""
+    from reportlab.platypus import Frame
+    pad = 2 * mm
+    cog = item.get("cog", "")
+    cog_color = COG_COLORS.get(cog, COLOR_MUTED)
+    inner_w = w - 2 * pad - 1.5 * mm
+
+    # Measure remaining content
+    remaining_h = _measure_flowables_height(leftover_flowables, inner_w)
+    overhead = 3 * mm + 2 * mm + 2 * mm  # top + small label + bottom padding
+    needed_h = min(max_height, remaining_h + overhead)
+    y_bot = y_top - needed_h
+
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.4)
+    c.rect(x, y_bot, w, needed_h, stroke=1, fill=0)
+    c.setFillColor(cog_color)
+    c.rect(x, y_bot, 1.2 * mm, needed_h, stroke=0, fill=1)
+
+    tx = x + pad + 1.5 * mm
+    cy = y_top - 3 * mm
+    # Mini continuation label
+    c.setFillColor(COLOR_MUTED)
+    c.setFont("Helvetica-Oblique", 6)
+    c.drawString(tx, cy - 1.5 * mm,
+                 f"« lanjutan: {COG_LABEL.get(cog, cog.upper())} — {(item.get('judul') or '—')[:60]} »")
+
+    frame_top = cy - 4 * mm
+    frame_bottom = y_bot + 2 * mm
+    frame_h = frame_top - frame_bottom
+    body_frame = Frame(tx, frame_bottom, inner_w, frame_h,
+                       leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                       showBoundary=0)
+    remainder = _fill_frame(body_frame, c, leftover_flowables)
+    return needed_h, (remainder if remainder else None)
 
 
 def _draw_kontra_card(c, x, y_top, w, item):
@@ -1788,10 +1859,10 @@ def _draw_kontra_card(c, x, y_top, w, item):
     img_block_w = 38 * mm if has_imgs else 0
     text_w = inner_w - (img_block_w + 2 * mm if has_imgs else 0)
 
-    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)[:5]
-    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    data_lines = wrap_to_width(item.get("data_diri", "") or "", "Helvetica", 6.5, text_w)
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)
     medsos_lines = []
-    for m in medsos[:6]:
+    for m in medsos:
         for ln in wrap_to_width(m, "Helvetica", 6, text_w):
             medsos_lines.append(ln)
 
@@ -2001,13 +2072,13 @@ def _draw_gal_card(c, x, y_top, w, item):
     img_w = 40 * mm if img else 0
     text_w = inner_w - (img_w + 2 * mm if img else 0)
 
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:3]
     links = [lk for lk in (item.get("links") or []) if lk]
     link_lines = []
-    for ln in links[:8]:
+    for ln in links:
         for w_ln in wrap_to_width(ln, "Helvetica", 6, text_w):
             link_lines.append(w_ln)
-    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)[:3]
+    ket_lines = wrap_to_width(item.get("keterangan", "") or "", "Helvetica", 6.5, text_w)
 
     h = 3 * mm + 4 * mm
     h += 2.7 * mm * len(judul_lines) + 0.5 * mm
@@ -2081,8 +2152,9 @@ def _measure_piket_card(item, w):
     has_img = bool(item.get("gambar"))
     img_w = 35 * mm if has_img else 0
     text_w = w - 2 * pad - (img_w + 2 * mm if has_img else 0)
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
-    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)[:8]
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:3]
+    # Full isi text — no [:8] cap
+    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)
     h = 3 * mm + 4 * mm  # badge row
     h += 2.7 * mm * len(judul_lines) + 0.5 * mm
     if isi_lines:
@@ -2103,8 +2175,9 @@ def _draw_piket_card(c, x, y_top, w, item):
     img_w = 35 * mm if img else 0
     text_w = inner_w - (img_w + 2 * mm if img else 0)
 
-    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:2]
-    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)[:8]
+    judul_lines = wrap_to_width(item.get("judul", "—"), "Helvetica-Bold", 8, text_w)[:3]
+    # Full isi text — no [:8] cap; preserve user input fully
+    isi_lines = wrap_to_width(item.get("isi", "") or "", "Helvetica", 6.5, text_w)
 
     h = 3 * mm + 4 * mm
     h += 2.7 * mm * len(judul_lines) + 0.5 * mm
@@ -2290,7 +2363,7 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     # LID
     lid_items = data.get("lid", [])
     first_h = _measure_lid_card(lid_items[0], w) if lid_items else 12 * mm
-    begin_section("BERITA TRENDING (TIM LID)", f"{len(lid_items)} ITEM", first_h)
+    begin_section("BERITA TRENDING (TIM LID)", f"{len(lid_items)} ITEM", min(first_h, 60 * mm))
     if not lid_items:
         c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada berita.")
@@ -2298,10 +2371,30 @@ def build_summary_pdf(data, ai_text, ai_html=None):
     else:
         for it in lid_items:
             h_est = _measure_lid_card(it, w)
-            if state["y"] - h_est < avail_bottom:
+            avail_now = state["y"] - avail_bottom
+            page_max = avail_top - avail_bottom
+            if avail_now < 30 * mm and h_est > avail_now:
                 new_page()
-            _draw_lid_card(c, MARGIN, state["y"], w, it)
-            state["y"] -= h_est + 2 * mm
+                avail_now = state["y"] - avail_bottom
+            # If card fits in current available, draw whole. Otherwise split.
+            if h_est <= avail_now:
+                drawn_h, leftover = _draw_lid_card(c, MARGIN, state["y"], w, it)
+                state["y"] -= drawn_h + 2 * mm
+            else:
+                # Card needs splitting across pages
+                # First chunk fills the current available space
+                first_chunk_h = avail_now - 2 * mm
+                drawn_h, leftover = _draw_lid_card(c, MARGIN, state["y"], w, it,
+                                                   max_height=first_chunk_h)
+                state["y"] -= drawn_h + 2 * mm
+                # Continue on new pages until no leftover
+                while leftover:
+                    new_page()
+                    avail_now = state["y"] - avail_bottom
+                    drawn_h, leftover = _draw_lid_card_continuation(
+                        c, MARGIN, state["y"], w, it, leftover,
+                        max_height=avail_now)
+                    state["y"] -= drawn_h + 2 * mm
 
     state["y"] -= 2 * mm
 
