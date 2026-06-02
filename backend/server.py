@@ -653,19 +653,32 @@ def _make_snippets(text: str, query: str, max_snips: int = 3,
 
 
 SEARCHABLE_COLLECTIONS = [
-    # (collection_name, type_key, title_field, searchable_fields, badge)
+    # (collection_name, type_key, title_field, searchable_fields, badge, aliases)
     ("lid_reports", "lid", "judul",
-     ["judul", "fakta", "analisa", "tindakan", "rekomendasi", "link", "cog"], "TIM LID"),
+     ["judul", "fakta", "analisa", "tindakan", "rekomendasi", "link", "cog"],
+     "TIM LID",
+     ["lid", "berita", "trending", "berita trending"]),
     ("kontra_reports", "kontra", "nama_to",
-     ["nama_to", "data_diri", "keterangan", "sumber", "tipe"], "TIM KONTRA"),
+     ["nama_to", "data_diri", "keterangan", "sumber", "tipe"],
+     "TIM KONTRA",
+     ["kontra", "profiling", "target operasi"]),
     ("gal_reports", "gal", "judul",
-     ["judul", "keterangan", "kategori"], "TIM GAL"),
+     ["judul", "keterangan", "kategori"],
+     "TIM GAL",
+     ["gal", "galang", "narasi", "meme", "konten"]),
     ("medmon_reports", "medmon", "subjek",
-     ["subjek", "ringkasan", "analisa", "rekomendasi"], "TIM MEDMON"),
+     ["subjek", "ringkasan", "analisa", "rekomendasi"],
+     "TIM MEDMON",
+     ["medmon", "media monitoring", "sentiment", "sentimen"]),
     ("piket_reports", "piket", "judul",
-     ["judul", "isi", "satgas"], "PIKET"),
+     ["judul", "isi", "satgas"],
+     "PIKET",
+     ["piket", "satgas", "tek", "sandi", "medis"]),
     ("geoint_reports", "geoint", "nama_orang",
-     ["nama_orang", "wilayah", "status"], "TIM GEOINT"),
+     ["nama_orang", "wilayah", "status"],
+     "TIM GEOINT",
+     ["geoint", "opm", "kkb", "tpnpb",
+      "organisasi papua merdeka", "kelompok kriminal bersenjata"]),
 ]
 
 
@@ -676,29 +689,52 @@ async def search_reports(
     _user: dict = Depends(get_current_user),
 ):
     """Full-text search across all team reports. Returns matching items with
-    snippets so the UI can preview & highlight. Case-insensitive."""
+    snippets so the UI can preview & highlight. Case-insensitive.
+
+    Special behavior: if `q` matches one of the alias keywords for a
+    collection (e.g. "OPM" → GEOINT, "TPNPB" → GEOINT, "Berita Trending" →
+    LID), all documents from that collection are returned even if no field
+    contains the literal text — because the keyword IS the type itself.
+    """
     q = (q or "").strip()
     if len(q) < 2:
         return {"query": q, "total": 0, "results": []}
 
+    qlow = q.lower()
     safe_q = _re_search.escape(q)
     rx = {"$regex": safe_q, "$options": "i"}
 
     results: List[Dict[str, Any]] = []
-    for coll_name, type_key, title_field, fields, badge in SEARCHABLE_COLLECTIONS:
-        # Build OR filter — also search special list field for GAL (links)
-        or_clauses = [{f: rx} for f in fields]
-        if type_key == "gal":
-            or_clauses.append({"links": rx})
-        if type_key == "kontra":
-            or_clauses.append({"medsos": rx})
+    for coll_name, type_key, title_field, fields, badge, aliases in SEARCHABLE_COLLECTIONS:
+        # Alias match: query equals or is a substring of any alias / vice versa
+        alias_match = any(qlow == a or (len(qlow) >= 3 and qlow in a) or
+                          (len(a) >= 3 and a in qlow) for a in aliases)
+
+        if alias_match:
+            mongo_filter: Dict[str, Any] = {}
+        else:
+            or_clauses = [{f: rx} for f in fields]
+            if type_key == "gal":
+                or_clauses.append({"links": rx})
+            if type_key == "kontra":
+                or_clauses.append({"medsos": rx})
+            mongo_filter = {"$or": or_clauses}
+
         try:
-            cursor = db[coll_name].find({"$or": or_clauses}).limit(int(limit))
+            cursor = (
+                db[coll_name]
+                .find(mongo_filter)
+                .sort([("report_date", -1), ("_id", -1)])
+                .limit(int(limit))
+            )
             async for doc in cursor:
-                # Build a flat text representation for snippet extraction
                 pieces = []
                 doc_view: Dict[str, Any] = {}
-                for f in fields + (["links"] if type_key == "gal" else []) + (["medsos"] if type_key == "kontra" else []):
+                extra_fields = (
+                    (["links"] if type_key == "gal" else [])
+                    + (["medsos"] if type_key == "kontra" else [])
+                )
+                for f in fields + extra_fields:
                     v = doc.get(f)
                     if v is None:
                         continue
@@ -712,22 +748,27 @@ async def search_reports(
                         if s:
                             pieces.append((f, s))
                             doc_view[f] = s
-                # Find snippets per field
+
                 field_snippets: List[Dict[str, Any]] = []
-                for f, txt in pieces:
-                    sn = _make_snippets(txt, q, max_snips=2, context_chars=70)
-                    for s in sn:
-                        s["field"] = f
-                        field_snippets.append(s)
-                    if len(field_snippets) >= 5:
-                        break
+                if not alias_match:
+                    for f, txt in pieces:
+                        sn = _make_snippets(txt, q, max_snips=2, context_chars=70)
+                        for s in sn:
+                            s["field"] = f
+                            field_snippets.append(s)
+                        if len(field_snippets) >= 5:
+                            break
+
                 if not field_snippets:
-                    # fallback: include first 120 chars of any populated field
-                    for f, txt in pieces[:1]:
+                    # alias match OR no literal hit — preview top text fields
+                    for f, txt in pieces[:3]:
                         field_snippets.append({
-                            "field": f, "snippet": txt[:160],
-                            "match_at": -1, "match_len": 0,
+                            "field": f,
+                            "snippet": txt[:200],
+                            "match_at": -1,
+                            "match_len": 0,
                         })
+
                 results.append({
                     "id": str(doc.get("_id")),
                     "type": type_key,
@@ -736,6 +777,7 @@ async def search_reports(
                     "title": str(doc.get(title_field, "") or "Tanpa Judul"),
                     "snippets": field_snippets[:5],
                     "full_doc": _serialize_doc_for_search(doc, type_key),
+                    "alias_match": alias_match,
                 })
                 if len(results) >= int(limit):
                     break
@@ -744,7 +786,6 @@ async def search_reports(
         if len(results) >= int(limit):
             break
 
-    # Sort: most recent first
     results.sort(key=lambda r: (r.get("report_date") or "", r.get("title", "")), reverse=True)
     return {"query": q, "total": len(results), "results": results[: int(limit)]}
 

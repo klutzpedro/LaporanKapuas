@@ -96,7 +96,7 @@ export default function SearchPage() {
   }, []);
 
   return (
-    <div className="space-y-6" data-testid="search-page">
+    <div className="p-6 space-y-6" data-testid="search-page">
       <header className="flex items-center justify-between border-b border-zinc-800 pb-4">
         <div>
           <p className="overline text-amber-500">Pencarian</p>
