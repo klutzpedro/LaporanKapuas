@@ -1211,66 +1211,92 @@ def _draw_lid_strip(c, x, y, w, h, data):
                 fit_image(c, img, col_x + 0.5 * mm, bottom, col_w - 1 * mm, img_h)
 
 
-MEDMON_ROW_H = 38 * mm
+MEDMON_MIN_ROW_H = 38 * mm  # minimum to fit pie chart + chips
+
+
+def _medmon_analisa_flowables(item, text_col_w):
+    """Build flowables for the MEDMON analisa column (full text)."""
+    from reportlab.platypus import Paragraph, Spacer
+    out = []
+    val = (item.get("analisa") or "").strip()
+    if val:
+        ps_body = _make_pstyle("medmon_body", size=6.5, color="#3F3F46", leading=8.2)
+        body_html = _safe_html(val).replace("\n", "<br/>")
+        out.append(Paragraph(body_html, ps_body))
+    return out
 
 
 def _measure_medmon_card(item, w):
-    return MEDMON_ROW_H
+    pad = 2 * mm
+    text_col_w = w * 0.42 - 2 * mm
+    flowables = _medmon_analisa_flowables(item, text_col_w)
+    overhead = 4 * mm + 3 * mm + 3 * mm + 2 * mm  # name + chips + spacing + bottom
+    content_h = _measure_flowables_height(flowables, text_col_w) if flowables else 0
+    return max(MEDMON_MIN_ROW_H, overhead + content_h)
 
 
 def _draw_medmon_card(c, x, y, w, it):
     """Draw a single MEDMON subject card. Top-anchored at y.
-    Returns: card height (mm-converted, total y consumed)."""
-    row_h = MEDMON_ROW_H
+    Returns: card height (total y consumed)."""
+    from reportlab.platypus import Frame
+    row_h = _measure_medmon_card(it, w)
     ry = y - row_h
     # Card border
     c.setStrokeColor(COLOR_BORDER2)
     c.setLineWidth(0.3)
     c.rect(x, ry, w, row_h, stroke=1, fill=0)
-    # subject name
+    # subject name (full, no truncation — uppercased)
     c.setFillColor(COLOR_HEADER)
-    c.setFont("Helvetica-Bold", 8.5)
+    c.setFont("Helvetica-Bold", 9)
     subj = truncate_to_width(str(it.get("subjek", "-")).upper(),
-                             "Helvetica-Bold", 8.5, w * 0.4)
-    c.drawString(x + 2 * mm, ry + row_h - 4 * mm, subj)
+                             "Helvetica-Bold", 9, w * 0.42)
+    c.drawString(x + 2 * mm, y - 4 * mm, subj)
     # sentiment chips
     positifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "positif")
     negatifs = sum(1 for b in it.get("berita", []) if b.get("sentiment") == "negatif")
     c.setFont("Helvetica-Bold", 7)
     c.setFillColor(COLOR_GREEN)
-    c.drawString(x + 2 * mm, ry + row_h - 7 * mm, f"+{positifs} positif")
+    c.drawString(x + 2 * mm, y - 7 * mm, f"+{positifs} positif")
     c.setFillColor(COLOR_RED)
-    c.drawString(x + 20 * mm, ry + row_h - 7 * mm, f"−{negatifs} negatif")
-    # analisa
-    c.setFillColor(COLOR_MUTED)
-    c.setFont("Helvetica", 6.5)
+    c.drawString(x + 22 * mm, y - 7 * mm, f"−{negatifs} negatif")
+
+    # ANALISA — full text via Paragraph in Frame
     text_col_w = w * 0.42 - 2 * mm
-    line_y = ry + row_h - 10 * mm
-    for ln in wrap_to_width(it.get("analisa", ""), "Helvetica", 6.5, text_col_w)[:6]:
-        c.drawString(x + 2 * mm, line_y, ln)
-        line_y -= 2.5 * mm
-    # auto pie chart from MEDMON sentiment percentages
+    flowables = _medmon_analisa_flowables(it, text_col_w)
+    frame_top = y - 9 * mm
+    frame_bottom = ry + 2 * mm
+    frame_h = frame_top - frame_bottom
+    if flowables and frame_h > 0:
+        body_frame = Frame(x + 2 * mm, frame_bottom, text_col_w, frame_h,
+                           leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                           showBoundary=0)
+        _fill_frame(body_frame, c, flowables)
+
+    # auto pie chart from MEDMON sentiment percentages (right side)
     img_w = w * 0.27
     pie_x = x + w * 0.43
     if _has_sentiment(it):
-        pie_r = min(img_w - 4 * mm, row_h - 4 * mm) / 2
+        pie_r = min(img_w - 4 * mm, MEDMON_MIN_ROW_H - 4 * mm) / 2
         pie_cx = pie_x + img_w / 2
-        pie_cy = ry + row_h / 2
+        pie_cy = y - 2 * mm - (MEDMON_MIN_ROW_H - 4 * mm) / 2
         draw_sentiment_pie(c, pie_cx, pie_cy, pie_r,
                            it.get("sentiment_positif"),
                            it.get("sentiment_negatif"),
                            it.get("sentiment_netral"))
     else:
         c.setFillColor(COLOR_LIGHT)
-        c.rect(pie_x, ry + 1 * mm, img_w - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
-    # chart sumber
+        c.rect(pie_x, y - MEDMON_MIN_ROW_H + 1 * mm, img_w - 1 * mm,
+               MEDMON_MIN_ROW_H - 2 * mm, stroke=0, fill=1)
+    # chart sumber (right-most column)
     chart_x = x + w * 0.7
     img2 = decode_image(it.get("chart_sumber_image"))
     if img2:
-        fit_image(c, img2, chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm)
+        fit_image(c, img2, chart_x, y - MEDMON_MIN_ROW_H + 1 * mm,
+                  w * 0.28 - 1 * mm, MEDMON_MIN_ROW_H - 2 * mm)
     else:
         c.setFillColor(COLOR_LIGHT)
-        c.rect(chart_x, ry + 1 * mm, w * 0.28 - 1 * mm, row_h - 2 * mm, stroke=0, fill=1)
+        c.rect(chart_x, y - MEDMON_MIN_ROW_H + 1 * mm, w * 0.28 - 1 * mm,
+               MEDMON_MIN_ROW_H - 2 * mm, stroke=0, fill=1)
     return row_h
 
 
