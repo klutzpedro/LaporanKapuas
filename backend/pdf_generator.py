@@ -909,6 +909,7 @@ def _make_pstyle(name, size, bold=False, color="#0F172A", indent=0, leading=None
 # ---------- EXECUTIVE SUMMARY (PAGE 1 - BIG) ----------
 HEADING_RE = re.compile(
     r"^(RINGKASAN\b|ANALISA\b|REKOMENDASI\b|ANALISA\s*&\s*REKOMENDASI\b|"
+    r"LID\s*:?|KONTRA\s*:?|GAL\s*:?|MEDMON\s*:?|GEOINT\s*:?|PIKET\s*:?|"
     r"\d+\.\s*(?:ACEH|JAKARTA|PAPUA|INTERNASIONAL)\b)",
     re.IGNORECASE,
 )

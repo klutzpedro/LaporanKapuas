@@ -12,13 +12,60 @@ logger = logging.getLogger("bais.ai")
 SYSTEM_PROMPT = (
     "Anda adalah analis intelijen strategis senior BAIS TNI. "
     "Tugas Anda menyusun EXECUTIVE SUMMARY harian yang ringkas, padat, dan langsung-pakai untuk pimpinan, "
-    "dari laporan tim LID (berita trending), KONTRA (profiling TO), GAL (konten galang), "
-    "MEDMON (media monitoring), GEOINT (posisi OPM), dan PIKET (Satgas Tek/Sandi/Medis). "
-    "Output harus dalam Bahasa Indonesia formal gaya laporan intelijen militer. "
-    "Total panjang maksimal 320 kata. "
-    "Wajib mengintegrasikan SEMUA tim — bukan hanya berita LID. "
-    "Tidak ada spekulasi; hanya data yang diberikan. Hindari kata pengisi."
+    "dari laporan tim LID, KONTRA, GAL, MEDMON, GEOINT, dan PIKET. "
+    "Output WAJIB dalam Bahasa Indonesia formal gaya laporan intelijen militer. "
+    "Anda HARUS mengikuti template format yang diberikan secara PERSIS — sama persis label, urutan, tanda baca, "
+    "dan struktur baris. JANGAN tambah heading bergaya markdown (##, **, dst). "
+    "JANGAN tambah penomoran/bullet di luar yang sudah ditentukan. "
+    "Tidak ada spekulasi; hanya fakta dari data yang diberikan. Hindari kata pengisi."
 )
+
+
+FORMAT_TEMPLATE_EXAMPLE = """\
+RINGKASAN EKSEKUTIF:
+Hari ini (DD/MM/YYYY) tercatat tiga titik tekanan domestik: ringkas isu utama dengan dampak strategis dalam 3-4 kalimat padat yang menjelaskan apa kejadian, apa risiko, dan apa yang harus diketahui pimpinan. Sebutkan ancaman hybrid bila ada. Berikan satu kalimat penutup yang memberi rekomendasi tinggi-level kepada pimpinan.
+
+1. ACEH:
+Satu paragraf 1-2 kalimat. Bila tidak ada data tulis persis: Tidak ada perkembangan signifikan terpantau periode ini.
+
+2. JAKARTA:
+Satu paragraf 1-2 kalimat tentang dinamika ibu kota (sentiment, demo, isu politik).
+
+3. PAPUA:
+Satu paragraf 2-3 kalimat. Wajib sebutkan total titik OPM termonitor & wilayah penyebaran bila ada data GEOINT.
+
+4. INTERNASIONAL:
+Satu paragraf 1-2 kalimat. Bila tidak ada tulis persis: Tidak ada perkembangan signifikan terpantau periode ini.
+
+LID:
+Satu paragraf 1-2 kalimat — berita trending paling penting hari ini & dampak strategisnya.
+
+KONTRA:
+Satu paragraf 1-2 kalimat — TO/profiling mencolok hari ini (sebutkan nama TO bila ada), sumber, dan tipe ancaman.
+
+GAL:
+Satu paragraf 1-2 kalimat — arahan konten galang & kategori dominan.
+
+MEDMON:
+1. Presiden: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+2. Panglima TNI: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+3. MBG: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+4. Andrie Yunus: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+5. Indonesia Gelap: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+
+GEOINT:
+Satu paragraf 1-2 kalimat — total titik OPM aktif, wilayah, dan zona operasi Kodam terkait.
+
+PIKET:
+Satu paragraf 1-2 kalimat — laporan ringkas Satgas Tek/Sandi/Medis bila ada.
+
+REKOMENDASI:
+Paragraf 1 — rekomendasi koordinasi/aksi prioritas pertama (1-2 kalimat).
+Paragraf 2 — rekomendasi kedua (1-2 kalimat).
+Paragraf 3 — rekomendasi ketiga (1-2 kalimat).
+Paragraf 4 — rekomendasi keempat bila perlu (1-2 kalimat).
+Paragraf 5 — rekomendasi kelima bila perlu (1-2 kalimat).
+"""
 
 
 def _format_payload(data: dict) -> str:
@@ -87,39 +134,93 @@ async def generate_ai_summary(data: dict) -> str:
         return ""  # Empty string → PDF generator will use its built-in fallback
 
     if provider == "ollama":
-        return await _generate_via_ollama(user_text, rd)
+        raw = await _generate_via_ollama(user_text, rd)
+    else:
+        # claude (default Emergent path)
+        raw = await _generate_via_claude(user_text, rd)
 
-    # claude (default Emergent path)
-    return await _generate_via_claude(user_text, rd)
+    return _sanitize_output(raw)
+
+
+# Standard section labels (urutan WAJIB)
+_LABELS = [
+    "RINGKASAN EKSEKUTIF",
+    "1. ACEH", "2. JAKARTA", "3. PAPUA", "4. INTERNASIONAL",
+    "LID", "KONTRA", "GAL", "MEDMON",
+    "GEOINT", "PIKET", "REKOMENDASI",
+]
+
+
+def _sanitize_output(text: str) -> str:
+    """Bersihkan output AI agar konsisten format baku:
+    - Hapus markdown (#, **, _, ```).
+    - Pastikan setiap label section ada di baris sendiri diakhiri ':' .
+    - Pastikan ada baris kosong sebelum setiap label (kecuali label pertama).
+    - Hilangkan preamble/explanatory text di awal sebelum 'RINGKASAN EKSEKUTIF'.
+    """
+    if not text:
+        return text
+    # Skip error message blocks (output dari _generate_via_ollama saat fail)
+    if text.lstrip().startswith("[AI SUMMARY ERROR"):
+        return text
+
+    import re
+
+    # 1) Hapus code fences & bold/italic markdown & heading hashes
+    text = re.sub(r"```[a-zA-Z]*\n?", "", text)
+    text = text.replace("```", "")
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)         # **bold**
+    text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", text)  # *italic*
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", text)  # _italic_
+    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)  # # heading
+
+    # 2) Skip preamble: cari label "RINGKASAN EKSEKUTIF" sebagai SECTION HEADER
+    #    (harus all-caps & di awal baris, hindari match preamble lowercase)
+    m = re.search(r"(?m)^[ \t]*RINGKASAN[ \t]+EKSEKUTIF[ \t]*:?[ \t]*$", text)
+    if m:
+        text = text[m.start():]
+
+    # 3) Normalize label lines: setiap label canonical "LABEL:\n"
+    #    Match HANYA jika label muncul sebagai section header (di awal baris,
+    #    optional colon, optional whitespace, end of line atau diikuti newline)
+    for label in _LABELS:
+        pattern = re.compile(
+            r"(?m)^[ \t]*" + re.escape(label) + r"[ \t]*:?[ \t]*$"
+        )
+        text = pattern.sub(f"\n{label}:", text, count=1)
+
+    # 4) Cleanup excessive blank lines & trailing whitespace
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    text = "\n".join(line.rstrip() for line in text.split("\n"))
+
+    return text
 
 
 def _build_user_prompt(data: dict) -> str:
     """Build the prompt text. Shared between providers."""
     return (
-        "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI. Wajib gabungkan SEMUA tim. "
-        "Format WAJIB (Bahasa Indonesia, total max 380 kata, kalimat efisien & padat):\n\n"
-        "RINGKASAN EKSEKUTIF: (3 kalimat menjawab: apa kejadian utama hari ini, apa risiko, apa yang harus diketahui pimpinan).\n\n"
-        "(Bagian COG — masing-masing 1-2 kalimat. Jika tidak ada data, tulis: 'Tidak ada perkembangan signifikan terpantau periode ini.')\n"
-        "1. ACEH:\n"
-        "2. JAKARTA:\n"
-        "3. PAPUA: (sertakan total titik OPM termonitor & berapa AKTIF bila ada).\n"
-        "4. INTERNASIONAL:\n\n"
-        "(Bagian Per-Tim — masing-masing satu paragraf terpisah di baris baru)\n"
-        "LID: (1-2 kalimat — berita trending paling penting hari ini & dampaknya).\n"
-        "KONTRA: (1-2 kalimat — TO/profiling mencolok hari ini, sumber & tipe ancaman).\n"
-        "GAL: (1-2 kalimat — arahan konten galang & kategori dominan).\n"
-        "MEDMON: SEBUTKAN SETIAP SUBJEK SEBAGAI ITEM TERPISAH dengan format DAFTAR BERNOMOR. "
-        "Tulis kata 'MEDMON:' pada baris sendiri, lalu pada baris-baris BERIKUTNYA tulis: "
-        "'1. Presiden: positif X%/negatif Y%/netral Z% — ringkasan singkat.', "
-        "'2. Panglima TNI: positif X%/negatif Y%/netral Z% — ringkasan.', "
-        "'3. MBG: ...', dst hingga semua subjek tercantum. "
-        "Setiap nomor di baris baru. JANGAN gabungkan menjadi 1 paragraf.\n"
-        "GEOINT: (1 kalimat — total titik OPM aktif & wilayah utama).\n"
-        "PIKET: (1 kalimat — laporan satgas tek/sandi/medis bila ada).\n\n"
-        "REKOMENDASI: (3-5 poin singkat, action-oriented, gunakan bullet '-').\n\n"
-        "Jangan ulang label menjadi heading panjang. Jangan pakai bullet selain pada bagian REKOMENDASI. "
-        "Pastikan tiap section LID/KONTRA/GAL/MEDMON/GEOINT/PIKET adalah PARAGRAF TERPISAH (pisahkan dengan baris kosong).\n\n"
-        "Data hari ini:\n" + _format_payload(data)
+        "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI dengan mengikuti TEMPLATE FORMAT BAKU di bawah ini.\n\n"
+        "=== ATURAN WAJIB ===\n"
+        "1. Ikuti STRUKTUR, LABEL, dan URUTAN template PERSIS sama. JANGAN tambah/kurangi label.\n"
+        "2. Setiap label (RINGKASAN EKSEKUTIF, 1. ACEH, 2. JAKARTA, 3. PAPUA, 4. INTERNASIONAL, "
+        "LID, KONTRA, GAL, MEDMON, GEOINT, PIKET, REKOMENDASI) WAJIB ditulis di baris sendiri, "
+        "diakhiri dengan tanda titik dua ':' .\n"
+        "3. Isi konten dimulai pada baris BERIKUTNYA setelah label.\n"
+        "4. JANGAN gunakan markdown (#, **, _, *, -). JANGAN bold/italic.\n"
+        "5. Pada bagian MEDMON: setiap subjek di baris terpisah dengan format "
+        "'N. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — ringkasan.'\n"
+        "6. Pada bagian REKOMENDASI: tiap rekomendasi adalah PARAGRAF terpisah (bukan bullet, bukan nomor).\n"
+        "7. Bila bagian COG (ACEH/JAKARTA/PAPUA/INTERNASIONAL) tidak ada data, tulis PERSIS: "
+        "'Tidak ada perkembangan signifikan terpantau periode ini.'\n"
+        "8. Output hanya teks bersih (plain text) — tidak ada penjelasan/komentar tambahan di luar format.\n"
+        "9. Total panjang maksimal 500 kata.\n"
+        "10. Bahasa Indonesia formal gaya laporan intelijen militer.\n\n"
+        "=== TEMPLATE FORMAT BAKU ===\n"
+        + FORMAT_TEMPLATE_EXAMPLE +
+        "\n=== DATA HARI INI ===\n"
+        + _format_payload(data) +
+        "\n\nSekarang tulis EXECUTIVE SUMMARY mengikuti template baku di atas. "
+        "Mulai langsung dari 'RINGKASAN EKSEKUTIF:' tanpa preamble."
     )
 
 
@@ -138,9 +239,11 @@ async def _generate_via_ollama(user_text: str, rd: str) -> str:
         "prompt": user_text,
         "stream": False,
         "options": {
-            "temperature": 0.3,
-            "num_ctx": 4096,            # Lebih kecil = lebih cepat (cukup untuk data harian)
-            "num_predict": 1200,        # Cap output token agar tidak overrun
+            "temperature": 0.15,         # Lebih deterministik = lebih disiplin ikut template
+            "top_p": 0.9,
+            "repeat_penalty": 1.1,
+            "num_ctx": 6144,            # Cukup untuk system+template+data harian
+            "num_predict": 1500,        # Cap output token agar lengkap (≤500 kata)
         },
     }
     try:
