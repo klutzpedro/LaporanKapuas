@@ -1827,6 +1827,14 @@ def _draw_lid_card(c, x, y_top, w, item, max_height=None):
                        leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
                        showBoundary=0)
     remainder = _fill_frame(body_frame, c, clipped_flowables)
+    # Strip trailing pure-Spacer flowables — they don't represent meaningful
+    # content, so we shouldn't trigger a continuation page just to render
+    # blank space.
+    if remainder:
+        from reportlab.platypus import Spacer
+        meaningful = [f for f in remainder if not isinstance(f, Spacer)]
+        if not meaningful:
+            remainder = []
     if remainder:
         # Card content overflowed — return leftover so caller can continue
         return card_h, remainder
@@ -2395,25 +2403,26 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada berita.")
         state["y"] -= 6 * mm
     else:
+        page_max = avail_top - avail_bottom
         for it in lid_items:
             h_est = _measure_lid_card(it, w)
             avail_now = state["y"] - avail_bottom
-            page_max = avail_top - avail_bottom
-            if avail_now < 30 * mm and h_est > avail_now:
-                new_page()
-                avail_now = state["y"] - avail_bottom
-            # If card fits in current available, draw whole. Otherwise split.
             if h_est <= avail_now:
+                # Card fits in current available space — draw whole
+                drawn_h, leftover = _draw_lid_card(c, MARGIN, state["y"], w, it)
+                state["y"] -= drawn_h + 2 * mm
+            elif h_est <= page_max:
+                # Card fits on a fresh page — start new page and draw whole
+                # (no "lanjutan" label needed; avoids ugly stub on previous page)
+                new_page()
                 drawn_h, leftover = _draw_lid_card(c, MARGIN, state["y"], w, it)
                 state["y"] -= drawn_h + 2 * mm
             else:
-                # Card needs splitting across pages
-                # First chunk fills the current available space
+                # Card truly too tall for one page — split across pages
                 first_chunk_h = avail_now - 2 * mm
                 drawn_h, leftover = _draw_lid_card(c, MARGIN, state["y"], w, it,
                                                    max_height=first_chunk_h)
                 state["y"] -= drawn_h + 2 * mm
-                # Continue on new pages until no leftover
                 while leftover:
                     new_page()
                     avail_now = state["y"] - avail_bottom
