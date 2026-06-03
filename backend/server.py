@@ -23,6 +23,10 @@ from starlette.middleware.cors import CORSMiddleware
 
 from pdf_generator import build_summary_pdf
 from ai_summary import generate_ai_summary
+from security import (
+    RateLimitMiddleware, SecurityHeadersMiddleware,
+    check_brute, record_failed_login, reset_login_attempts, _client_ip,
+)
 
 # ---------- Logging ----------
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s - %(message)s")
@@ -46,6 +50,33 @@ COG_CHOICES = {"aceh", "jakarta", "indonesia", "papua", "internasional"}
 
 app = FastAPI(title="BAIS Summary Geospasika")
 api = APIRouter(prefix="/api")
+
+
+# ===================== AUDIT LOG =====================
+async def audit_log(
+    *, actor_email: Optional[str], actor_id: Optional[str],
+    action: str, target: Optional[str] = None,
+    ip: Optional[str] = None, meta: Optional[dict] = None,
+) -> None:
+    """Append an entry to the `user_audit` collection. Best-effort: never raise.
+
+    Recorded actions: login_success, login_failed, user_create, user_update,
+    user_delete, password_reset, pdf_generate (admin-triggered).
+    """
+    try:
+        await db.user_audit.insert_one({
+            "ts": datetime.now(timezone.utc),
+            "actor_email": actor_email,
+            "actor_id": actor_id,
+            "action": action,
+            "target": target,
+            "ip": ip,
+            "meta": meta or {},
+        })
+    except Exception as e:
+        logger.warning(f"audit_log insert failed: {e}")
+
+
 
 
 # ===================== AUTH HELPERS =====================
@@ -110,6 +141,25 @@ def require_role(*roles):
     return dep
 
 
+# ===================== AUDIT LOG ENDPOINT (admin only) =====================
+@api.get("/audit")
+async def list_audit(
+    limit: int = 100,
+    action: Optional[str] = None,
+    _user: dict = Depends(require_role("admin")),
+):
+    """Admin-only: read recent audit entries."""
+    q: Dict[str, Any] = {}
+    if action:
+        q["action"] = action
+    docs = await db.user_audit.find(q).sort("ts", -1).limit(int(limit)).to_list(int(limit))
+    for d in docs:
+        d["_id"] = str(d["_id"])
+        if isinstance(d.get("ts"), datetime):
+            d["ts"] = d["ts"].isoformat()
+    return docs
+
+
 # ===================== AUTH MODELS =====================
 class LoginIn(BaseModel):
     email: EmailStr
@@ -125,15 +175,32 @@ class RegisterIn(BaseModel):
 
 # ===================== AUTH ENDPOINTS =====================
 @api.post("/auth/login")
-async def login(payload: LoginIn, response: Response):
+async def login(payload: LoginIn, request: Request, response: Response):
     email = payload.email.lower()
+    ip = _client_ip(request)
+    # Brute-force gate: refuse early if locked
+    await check_brute(email, ip)
+
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
+        await record_failed_login(email, ip)
+        await audit_log(
+            actor_email=email, actor_id=None, action="login_failed",
+            target=email, ip=ip,
+            meta={"reason": "invalid_credentials"},
+        )
         raise HTTPException(status_code=401, detail="Email atau password salah")
+
+    await reset_login_attempts(email, ip)
     token = create_access_token(str(user["_id"]), user["email"], user["role"])
     response.set_cookie(
         key="access_token", value=token, httponly=True, secure=False,
         samesite="lax", max_age=43200, path="/",
+    )
+    await audit_log(
+        actor_email=user["email"], actor_id=str(user["_id"]),
+        action="login_success", target=user["email"], ip=ip,
+        meta={"role": user["role"]},
     )
     return {
         "id": str(user["_id"]),
@@ -1157,13 +1224,31 @@ async def shutdown():
 
 # ===================== APP =====================
 app.include_router(api)
+
+# ===================== HARDENING MIDDLEWARES =====================
+# Middlewares run in REVERSE order of add. So we add security headers FIRST
+# (runs last = wraps everything), then rate limit (runs first = guards early),
+# finally CORS (innermost = response only).
+
+# CORS — strict allowlist. Configure via ALLOWED_ORIGINS env var
+# (comma-separated). Falls back to safe default. NEVER use "*" with
+# allow_credentials=True (CORS spec forbids it).
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "").strip()
+ALLOWED_ORIGINS = (
+    [o.strip() for o in _origins_env.split(",") if o.strip()]
+    if _origins_env else
+    ["http://localhost:3000", "https://laporankapuas.id"]
+)
 app.add_middleware(
     CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
     allow_credentials=True,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "X-Requested-With"],
+    max_age=600,
 )
+app.add_middleware(RateLimitMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
 
 
 @api.get("/")

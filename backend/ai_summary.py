@@ -72,18 +72,30 @@ def _format_payload(data: dict) -> str:
 
 
 async def generate_ai_summary(data: dict) -> str:
-    api_key = os.environ.get("EMERGENT_LLM_KEY")
-    if not api_key:
-        return "[AI SUMMARY UNAVAILABLE] EMERGENT_LLM_KEY tidak tersedia."
-
+    """Generate executive summary. Provider chosen via env AI_PROVIDER:
+    - 'ollama' (DEFAULT for production VPS) — calls local Ollama on
+      http://127.0.0.1:11434. ZERO data leaves the server.
+    - 'claude' — uses Anthropic via Emergent LLM key (data goes to Anthropic).
+    - 'off' — no AI; returns a template message indicating to use the
+      built-in fallback summary inside the PDF generator.
+    """
+    provider = (os.environ.get("AI_PROVIDER") or "ollama").lower().strip()
     rd = data.get("report_date", "unknown")
-    chat = LlmChat(
-        api_key=api_key,
-        session_id=f"bais-summary-{rd}",
-        system_message=SYSTEM_PROMPT,
-    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
+    user_text = _build_user_prompt(data)
 
-    user_text = (
+    if provider == "off":
+        return ""  # Empty string → PDF generator will use its built-in fallback
+
+    if provider == "ollama":
+        return await _generate_via_ollama(user_text, rd)
+
+    # claude (default Emergent path)
+    return await _generate_via_claude(user_text, rd)
+
+
+def _build_user_prompt(data: dict) -> str:
+    """Build the prompt text. Shared between providers."""
+    return (
         "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI. Wajib gabungkan SEMUA tim. "
         "Format WAJIB (Bahasa Indonesia, total max 380 kata, kalimat efisien & padat):\n\n"
         "RINGKASAN EKSEKUTIF: (3 kalimat menjawab: apa kejadian utama hari ini, apa risiko, apa yang harus diketahui pimpinan).\n\n"
@@ -110,6 +122,48 @@ async def generate_ai_summary(data: dict) -> str:
         "Data hari ini:\n" + _format_payload(data)
     )
 
+
+async def _generate_via_ollama(user_text: str, rd: str) -> str:
+    """Call local Ollama (100% on-server, no external network).
+    Default model: 'llama3.2:3b' (fast, ~2GB RAM). Override via OLLAMA_MODEL.
+    """
+    import httpx
+    host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
+    model = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+    payload = {
+        "model": model,
+        "system": SYSTEM_PROMPT,
+        "prompt": user_text,
+        "stream": False,
+        "options": {"temperature": 0.3, "num_ctx": 8192},
+    }
+    try:
+        async with httpx.AsyncClient(timeout=180.0) as client:
+            r = await client.post(f"{host}/api/generate", json=payload)
+            r.raise_for_status()
+            body = r.json()
+            return str(body.get("response", "")).strip()
+    except Exception as e:
+        logger.exception(f"Ollama summary failed (host={host}, model={model})")
+        return (
+            f"[AI SUMMARY ERROR — Ollama lokal tidak merespons: {e}]\n\n"
+            "Pastikan Ollama berjalan di VPS (sudo systemctl status ollama) "
+            f"dan model '{model}' sudah ter-pull (ollama pull {model})."
+        )
+
+
+async def _generate_via_claude(user_text: str, rd: str) -> str:
+    """Legacy: call Anthropic Claude via Emergent LLM key.
+    NOTE: data will leave the VPS. Only use if AI_PROVIDER=claude explicitly.
+    """
+    api_key = os.environ.get("EMERGENT_LLM_KEY")
+    if not api_key:
+        return "[AI SUMMARY UNAVAILABLE] EMERGENT_LLM_KEY tidak tersedia."
+    chat = LlmChat(
+        api_key=api_key,
+        session_id=f"bais-summary-{rd}",
+        system_message=SYSTEM_PROMPT,
+    ).with_model("anthropic", "claude-sonnet-4-5-20250929")
     try:
         resp = await chat.send_message(UserMessage(text=user_text))
         return str(resp).strip()
