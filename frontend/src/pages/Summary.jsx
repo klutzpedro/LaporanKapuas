@@ -4,7 +4,7 @@ import { PageHeader, Card } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { FilePdf, Robot, Clock, ArrowsClockwise, FloppyDisk, Plus, Sparkle, Trash } from "@phosphor-icons/react";
+import { FilePdf, Robot, Clock, ArrowsClockwise, FloppyDisk, Plus, Sparkle, Trash, CircleNotch } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import RichEditor from "@/components/RichEditor";
 import { marked } from "marked";
@@ -16,6 +16,60 @@ function mdToHtml(md) {
   try { return marked.parse(md, { breaks: true }); } catch { return md; }
 }
 
+function AIGeneratingOverlay({ elapsed = 0 }) {
+  const mm = String(Math.floor(elapsed / 60)).padStart(2, "0");
+  const ss = String(elapsed % 60).padStart(2, "0");
+  // Progress bar visual (cap di 120 detik)
+  const pct = Math.min(100, (elapsed / 120) * 100);
+  const status = elapsed < 30
+    ? "Mengumpulkan data dari semua tim..."
+    : elapsed < 60
+      ? "AI sedang merangkum narasi..."
+      : elapsed < 120
+        ? "Hampir selesai, finalisasi ringkasan..."
+        : "Hampir selesai, terima kasih atas kesabaran...";
+  return (
+    <div
+      data-testid="ai-loading-overlay"
+      className="absolute inset-0 z-50 flex items-center justify-center bg-zinc-950/85 backdrop-blur-sm rounded-sm"
+    >
+      <div className="flex flex-col items-center gap-4 px-8 py-6 max-w-sm text-center">
+        <div className="relative w-16 h-16 flex items-center justify-center">
+          <CircleNotch
+            size={64}
+            weight="bold"
+            className="text-violet-500 animate-spin"
+            style={{ animationDuration: "1.2s" }}
+          />
+          <Sparkle size={22} weight="fill" className="absolute text-amber-400" />
+        </div>
+        <div className="space-y-1">
+          <p className="text-sm font-bold uppercase tracking-wider text-amber-400">
+            AI Sedang Memproses
+          </p>
+          <p className="text-xs text-zinc-300">{status}</p>
+        </div>
+        <div className="w-full">
+          <div className="h-1 w-full bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-violet-500 to-amber-400 transition-all duration-500"
+              style={{ width: `${pct}%` }}
+            />
+          </div>
+          <div className="flex justify-between items-baseline mt-2 text-[10px] uppercase tracking-wider">
+            <span className="text-zinc-500">Waktu berjalan</span>
+            <span className="font-mono text-zinc-300">{mm}:{ss}</span>
+          </div>
+        </div>
+        <p className="text-[10px] text-zinc-500 leading-snug">
+          Estimasi waktu tunggu: <b className="text-amber-400">60 – 120 detik</b>.<br />
+          Jangan menutup atau me-refresh halaman ini.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export default function SummaryPage() {
   const [info, setInfo] = useState(null);
   const [reportDate, setReportDate] = useState("");
@@ -23,8 +77,17 @@ export default function SummaryPage() {
   const [originalHtml, setOriginalHtml] = useState("");
   const [aiMeta, setAiMeta] = useState(null);
   const [busyAI, setBusyAI] = useState(false);
+  const [aiElapsed, setAiElapsed] = useState(0);
   const [busyPDF, setBusyPDF] = useState(false);
   const [busySave, setBusySave] = useState(false);
+
+  // Counter elapsed time saat AI sedang generate (60-120 detik untuk Ollama CPU)
+  useEffect(() => {
+    if (!busyAI) { setAiElapsed(0); return; }
+    const t0 = Date.now();
+    const id = setInterval(() => setAiElapsed(Math.floor((Date.now() - t0) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [busyAI]);
 
   useEffect(() => {
     (async () => {
@@ -254,9 +317,12 @@ export default function SummaryPage() {
             }
           >
             {aiHtml ? (
-              <RichEditor value={aiHtml} onChange={setAiHtml} testid="ai-rich-editor" />
+              <div className="relative">
+                <RichEditor value={aiHtml} onChange={setAiHtml} testid="ai-rich-editor" />
+                {busyAI && <AIGeneratingOverlay elapsed={aiElapsed} />}
+              </div>
             ) : (
-              <div className="py-10 flex flex-col items-center gap-4">
+              <div className="relative py-10 flex flex-col items-center gap-4">
                 <p className="text-sm text-zinc-500 text-center max-w-md">
                   Belum ada ringkasan untuk tanggal <b className="text-amber-400 font-mono">{reportDate || "—"}</b>.
                 </p>
@@ -282,6 +348,7 @@ export default function SummaryPage() {
                 <p className="text-[10px] text-zinc-600 uppercase tracking-wider">
                   Tulis Manual = ketik bebas · AI Summary = generate dari data tim
                 </p>
+                {busyAI && <AIGeneratingOverlay elapsed={aiElapsed} />}
               </div>
             )}
           </Card>
