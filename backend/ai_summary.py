@@ -130,23 +130,52 @@ async def _generate_via_ollama(user_text: str, rd: str) -> str:
     import httpx
     host = os.environ.get("OLLAMA_HOST", "http://127.0.0.1:11434")
     model = os.environ.get("OLLAMA_MODEL", "llama3.2:3b")
+    # Timeout besar karena CPU inference qwen2.5:7b bisa 60-300 detik per request
+    timeout_s = float(os.environ.get("OLLAMA_TIMEOUT", "600"))
     payload = {
         "model": model,
         "system": SYSTEM_PROMPT,
         "prompt": user_text,
         "stream": False,
-        "options": {"temperature": 0.3, "num_ctx": 8192},
+        "options": {
+            "temperature": 0.3,
+            "num_ctx": 4096,            # Lebih kecil = lebih cepat (cukup untuk data harian)
+            "num_predict": 1200,        # Cap output token agar tidak overrun
+        },
     }
     try:
-        async with httpx.AsyncClient(timeout=180.0) as client:
+        timeout = httpx.Timeout(timeout_s, connect=10.0, read=timeout_s, write=30.0)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.post(f"{host}/api/generate", json=payload)
             r.raise_for_status()
             body = r.json()
-            return str(body.get("response", "")).strip()
+            text = str(body.get("response", "")).strip()
+            if not text:
+                logger.error(f"Ollama returned empty response. Body keys: {list(body.keys())}")
+                return "[AI SUMMARY ERROR — Ollama mengembalikan respons kosong. Coba ulangi atau ganti model lebih kecil (qwen2.5:3b).]"
+            return text
+    except httpx.ReadTimeout:
+        logger.error(f"Ollama TIMEOUT after {timeout_s}s (model={model}). Coba model lebih kecil.")
+        return (
+            f"[AI SUMMARY ERROR — Ollama timeout setelah {int(timeout_s)} detik dengan model '{model}'.]\n\n"
+            "Coba salah satu solusi:\n"
+            "1. Ganti ke model lebih kecil: edit backend/.env → OLLAMA_MODEL=qwen2.5:3b lalu restart bais-backend\n"
+            "2. Tambah RAM/CPU VPS\n"
+            "3. Tunggu beberapa menit lalu coba lagi (mungkin VPS sedang sibuk)"
+        )
+    except httpx.ConnectError as e:
+        logger.exception(f"Ollama connect error (host={host})")
+        return (
+            f"[AI SUMMARY ERROR — Tidak dapat terhubung ke Ollama di {host}.]\n\n"
+            f"Detail: {type(e).__name__}: {e}\n"
+            "Periksa: sudo systemctl status ollama"
+        )
     except Exception as e:
+        err_type = type(e).__name__
+        err_msg = str(e) if str(e) else "(no message)"
         logger.exception(f"Ollama summary failed (host={host}, model={model})")
         return (
-            f"[AI SUMMARY ERROR — Ollama lokal tidak merespons: {e}]\n\n"
+            f"[AI SUMMARY ERROR — Ollama lokal tidak merespons: {err_type}: {err_msg}]\n\n"
             "Pastikan Ollama berjalan di VPS (sudo systemctl status ollama) "
             f"dan model '{model}' sudah ter-pull (ollama pull {model})."
         )
