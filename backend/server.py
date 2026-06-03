@@ -1101,22 +1101,65 @@ async def reports_history(
             q["report_date"]["$lte"] = end_date
     cur = db.generated_reports.find(q, {"pdf_base64": 0}).sort("generated_at", -1).limit(min(limit, 500))
     out = []
+    seen_dates = set()
+    team_cols = {
+        "lid": "lid_reports", "kontra": "kontra_reports", "gal": "gal_reports",
+        "medmon": "medmon_reports", "geoint": "geoint_reports", "piket": "piket_reports",
+    }
     async for d in cur:
         d["id"] = str(d["_id"])
         del d["_id"]
-        # Compute team attendance for this report_date
         rd = d.get("report_date")
+        if rd:
+            seen_dates.add(rd)
+        # Compute team attendance for this report_date
         attendance = {}
-        team_cols = {
-            "lid": "lid_reports", "kontra": "kontra_reports", "gal": "gal_reports",
-            "medmon": "medmon_reports", "geoint": "geoint_reports", "piket": "piket_reports",
-        }
         for key, col in team_cols.items():
             n = await db[col].count_documents({"report_date": rd}) if rd else 0
             attendance[key] = n
         d["attendance"] = attendance
+        d["is_live"] = False
         out.append(d)
-    return out
+
+    # ===== LIVE MONITORING ROWS =====
+    # Auto-include "live" rows for dates that have team data but no generated PDF yet.
+    # This allows users to monitor attendance without having to generate PDF first.
+    live_dates: set[str] = set()
+    for col in team_cols.values():
+        # Build query for live dates: within filter window, NOT already in seen_dates
+        match_q: dict = {}
+        if start_date or end_date:
+            match_q["report_date"] = {}
+            if start_date:
+                match_q["report_date"]["$gte"] = start_date
+            if end_date:
+                match_q["report_date"]["$lte"] = end_date
+        distinct_dates = await db[col].distinct("report_date", match_q)
+        for d in distinct_dates:
+            if d and d not in seen_dates:
+                live_dates.add(d)
+
+    # Build live rows
+    live_rows = []
+    for rd in live_dates:
+        attendance = {}
+        for key, col in team_cols.items():
+            attendance[key] = await db[col].count_documents({"report_date": rd})
+        live_rows.append({
+            "id": f"live-{rd}",
+            "report_date": rd,
+            "generated_at": None,
+            "filename": None,
+            "size_bytes": 0,
+            "has_ai_summary": False,
+            "attendance": attendance,
+            "is_live": True,
+        })
+
+    # Merge & sort by report_date DESC (live rows naturally appear with today's data)
+    all_rows = out + live_rows
+    all_rows.sort(key=lambda r: (r.get("report_date") or ""), reverse=True)
+    return all_rows[:min(limit, 500)]
 
 
 @api.get("/reports/{rid}/download")

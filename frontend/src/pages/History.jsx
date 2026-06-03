@@ -36,6 +36,15 @@ export default function HistoryPage() {
   }
   useEffect(() => { load(); }, []);
 
+  // Auto-refresh every 60s so live monitoring rows update without manual reload
+  useEffect(() => {
+    const id = setInterval(() => {
+      load({ start_date: start, end_date: end });
+    }, 60000);
+    return () => clearInterval(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [start, end]);
+
   async function download(it) {
     try {
       const res = await api.get(`/reports/${it.id}/download`, { responseType: "blob" });
@@ -176,39 +185,63 @@ export default function HistoryPage() {
                   </thead>
                   <tbody>
                     {items.map((it) => (
-                      <tr key={it.id} className="border-b border-zinc-800/60 hover:bg-zinc-900/40" data-testid={`history-row-${it.id}`}>
-                        <td className="py-3 pr-3 font-mono text-amber-400 font-bold">{it.report_date}</td>
-                        <td className="py-3 pr-3 font-mono text-zinc-400">{fmtDate(it.generated_at)}</td>
+                      <tr key={it.id} className={`border-b border-zinc-800/60 hover:bg-zinc-900/40 ${it.is_live ? "bg-amber-500/5" : ""}`} data-testid={`history-row-${it.id}`}>
+                        <td className="py-3 pr-3 font-mono text-amber-400 font-bold">
+                          <div className="flex items-center gap-2">
+                            {it.report_date}
+                            {it.is_live && (
+                              <span
+                                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[9px] uppercase tracking-wider"
+                                data-testid="live-badge"
+                                title="Monitoring real-time — PDF belum di-generate"
+                              >
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                                LIVE
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="py-3 pr-3 font-mono text-zinc-400">
+                          {it.is_live ? <span className="text-amber-500/70 text-[10px]">— monitoring —</span> : fmtDate(it.generated_at)}
+                        </td>
                         <td className="py-3 pr-3"><AttendanceBadges attendance={it.attendance || {}} /></td>
                         <td className="py-3 pr-3">
                           {it.has_ai_summary
                             ? <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-emerald-500/15 text-emerald-400">YA</span>
                             : <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-500">TDK</span>}
                         </td>
-                        <td className="py-3 pr-3 font-mono text-zinc-400">{fmtSize(it.size_bytes)}</td>
+                        <td className="py-3 pr-3 font-mono text-zinc-400">{it.is_live ? "-" : fmtSize(it.size_bytes)}</td>
                         <td className="py-3 text-right space-x-1 whitespace-nowrap">
-                          <button
-                            onClick={() => preview(it)}
-                            data-testid={`history-preview-${it.id}`}
-                            className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/70 text-zinc-200 hover:text-amber-400 rounded-sm btn-tactical text-[10px]"
-                          >
-                            <Eye size={12} weight="bold" /> Preview
-                          </button>
-                          <button
-                            onClick={() => download(it)}
-                            data-testid={`history-download-${it.id}`}
-                            className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[10px]"
-                          >
-                            <DownloadSimple size={12} weight="bold" /> Unduh
-                          </button>
-                          {user?.role === "admin" && (
-                            <button
-                              onClick={() => del(it.id)}
-                              data-testid={`history-delete-${it.id}`}
-                              className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-red-900 border border-zinc-800 text-zinc-400 hover:text-red-300 rounded-sm text-[10px]"
-                            >
-                              <Trash size={12} weight="bold" />
-                            </button>
+                          {it.is_live ? (
+                            <span className="text-[10px] font-mono text-zinc-500 italic" data-testid={`history-live-hint-${it.report_date}`}>
+                              PDF belum di-generate
+                            </span>
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => preview(it)}
+                                data-testid={`history-preview-${it.id}`}
+                                className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/70 text-zinc-200 hover:text-amber-400 rounded-sm btn-tactical text-[10px]"
+                              >
+                                <Eye size={12} weight="bold" /> Preview
+                              </button>
+                              <button
+                                onClick={() => download(it)}
+                                data-testid={`history-download-${it.id}`}
+                                className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[10px]"
+                              >
+                                <DownloadSimple size={12} weight="bold" /> Unduh
+                              </button>
+                              {user?.role === "admin" && (
+                                <button
+                                  onClick={() => del(it.id)}
+                                  data-testid={`history-delete-${it.id}`}
+                                  className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-red-900 border border-zinc-800 text-zinc-400 hover:text-red-300 rounded-sm text-[10px]"
+                                >
+                                  <Trash size={12} weight="bold" />
+                                </button>
+                              )}
+                            </>
                           )}
                         </td>
                       </tr>
