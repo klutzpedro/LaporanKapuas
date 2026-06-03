@@ -139,7 +139,175 @@ async def generate_ai_summary(data: dict) -> str:
         # claude (default Emergent path)
         raw = await _generate_via_claude(user_text, rd)
 
-    return _sanitize_output(raw)
+    cleaned = _sanitize_output(raw)
+    cleaned = _enforce_completeness(cleaned, data)
+    return cleaned
+
+
+def _enforce_completeness(text: str, data: dict) -> str:
+    """Safety net: kalau AI lupa atau ter-truncate section penting,
+    tambahkan fallback isi dari data mentah (lebih baik ada daripada hilang).
+    """
+    if not text or text.lstrip().startswith("[AI SUMMARY ERROR"):
+        return text
+
+    import re
+
+    def has_section(label: str) -> tuple[bool, str]:
+        """Return (exists, content_after_label_until_next_section)."""
+        pattern = re.compile(rf"(?m)^{re.escape(label)}:\s*$")
+        m = pattern.search(text)
+        if not m:
+            return (False, "")
+        # Find next label
+        rest = text[m.end():]
+        next_m = re.search(r"(?m)^[A-Z0-9][A-Z0-9\.\s]*:\s*$", rest)
+        body = rest[:next_m.start()] if next_m else rest
+        return (True, body.strip())
+
+    # ----- 1) MEDMON: pastikan SEMUA subjek tercantum -----
+    medmon_items = data.get("medmon", [])
+    if medmon_items:
+        has, body = has_section("MEDMON")
+        missing = []
+        for it in medmon_items:
+            subj = (it.get("subjek") or "").strip()
+            if subj and subj.lower() not in body.lower():
+                missing.append(it)
+        if missing:
+            extra_lines = []
+            # Find starting number based on existing entries
+            existing_nums = re.findall(r"(?m)^\s*(\d+)\.\s", body)
+            start_n = (max(int(n) for n in existing_nums) + 1) if existing_nums else 1
+            for i, it in enumerate(missing):
+                subj = (it.get("subjek") or "").strip()
+                sp = it.get("sentiment_positif", 0)
+                sn = it.get("sentiment_negatif", 0)
+                snt = it.get("sentiment_netral", 0)
+                analisa = (it.get("analisa") or "").strip()
+                short = analisa[:140] + ("..." if len(analisa) > 140 else "")
+                if not short:
+                    short = "data sentimen termonitor."
+                extra_lines.append(
+                    f"{start_n + i}. {subj}: positif {sp}%/negatif {sn}%/netral {snt}% — {short}"
+                )
+            text = _append_to_section(text, "MEDMON", "\n" + "\n".join(extra_lines))
+
+    # ----- 2) PIKET: pastikan SEMUA satgas tercantum -----
+    piket_items = data.get("piket", [])
+    if piket_items:
+        has, body = has_section("PIKET")
+        # Group by satgas
+        by_satgas: dict[str, list[str]] = {}
+        for it in piket_items:
+            sg = (it.get("satgas") or "").upper().strip()
+            if sg:
+                judul = (it.get("judul") or "").strip()
+                isi = (it.get("isi") or "").strip()
+                snippet = f"{judul}: {isi}" if isi else judul
+                by_satgas.setdefault(sg, []).append(snippet[:160])
+        missing_satgas = [
+            sg for sg in by_satgas
+            if not re.search(rf"\bsatgas\s+{re.escape(sg)}\b", body, re.IGNORECASE)
+            and not re.search(rf"\b{re.escape(sg)}\b", body, re.IGNORECASE)
+        ]
+        if missing_satgas:
+            chunks = []
+            for sg in missing_satgas:
+                items_text = "; ".join(by_satgas[sg][:2])
+                chunks.append(f"Satgas {sg.title()} melaporkan {items_text}.")
+            text = _append_to_section(text, "PIKET", " " + " ".join(chunks))
+
+    # ----- 3) REKOMENDASI: pastikan minimal 4 paragraf -----
+    has, body = has_section("REKOMENDASI")
+    if not has or not body.strip() or len([p for p in body.split("\n\n") if p.strip()]) < 2:
+        # Generate fallback rekomendasi dari data
+        fallback = _fallback_rekomendasi(data)
+        if has:
+            text = _append_to_section(text, "REKOMENDASI", "\n\n" + fallback)
+        else:
+            text = text.rstrip() + "\n\nREKOMENDASI:\n" + fallback
+
+    return text
+
+
+def _append_to_section(text: str, label: str, addition: str) -> str:
+    """Insert `addition` at the end of section `label` (before next section)."""
+    import re
+    pattern = re.compile(rf"(?m)^{re.escape(label)}:\s*$")
+    m = pattern.search(text)
+    if not m:
+        return text.rstrip() + f"\n\n{label}:\n{addition.lstrip()}"
+    rest = text[m.end():]
+    next_m = re.search(r"(?m)^[A-Z0-9][A-Z0-9\.\s]*:\s*$", rest)
+    if next_m:
+        insert_pos = m.end() + next_m.start()
+        return text[:insert_pos].rstrip() + "\n" + addition.lstrip() + "\n\n" + text[insert_pos:]
+    return text.rstrip() + "\n" + addition.lstrip()
+
+
+def _fallback_rekomendasi(data: dict) -> str:
+    """Generate 4 rekomendasi standar berdasarkan ringkasan data."""
+    paragraphs = []
+
+    # Dari LID — rekomendasi mitigasi
+    lid = data.get("lid", [])
+    if lid:
+        topik = (lid[0].get("judul") or "isu trending hari ini").strip()
+        paragraphs.append(
+            f"Koordinasi kementerian/lembaga terkait untuk memitigasi eskalasi {topik}, "
+            "melalui sinkronisasi narasi resmi dan respons cepat terhadap potensi keresahan publik."
+        )
+
+    # Dari KONTRA — rekomendasi pengawasan
+    kontra = data.get("kontra", [])
+    if kontra:
+        names = [k.get("nama_to", "").strip() for k in kontra if k.get("nama_to")][:3]
+        names_str = ", ".join(names) if names else "TO yang teridentifikasi"
+        paragraphs.append(
+            f"Intensifkan pengawasan digital-fisik terhadap {names_str} untuk mendeteksi dini "
+            "rencana aksi dan mengamankan agenda strategis nasional."
+        )
+
+    # Dari MEDMON — rekomendasi penanganan sentimen
+    medmon = data.get("medmon", [])
+    negatif_subj = [m.get("subjek") for m in medmon
+                    if m.get("subjek") and (m.get("sentiment_negatif") or 0) > 30]
+    if negatif_subj:
+        paragraphs.append(
+            f"Akselerasi publikasi capaian dan komunikasi strategis terkait {', '.join(negatif_subj[:3])} "
+            "untuk menekan narasi negatif dan memulihkan kepercayaan publik."
+        )
+
+    # Dari GEOINT — rekomendasi keamanan wilayah
+    geo = data.get("geoint", [])
+    if geo:
+        n_aktif = sum(1 for g in geo if str(g.get("status", "")).lower() == "aktif")
+        paragraphs.append(
+            f"Koordinasi Kodam wilayah Papua untuk memantau {n_aktif} titik OPM aktif "
+            "dan mencegah konvergensi aktor bersenjata dengan aktivis struktural di zona pertambangan."
+        )
+
+    # Dari PIKET — rekomendasi keamanan siber
+    piket = data.get("piket", [])
+    if any((p.get("satgas") or "").lower() == "sandi" for p in piket):
+        paragraphs.append(
+            "Tingkatkan keamanan siber infrastruktur komunikasi pemerintah guna mengantisipasi "
+            "teknik phishing dan eksploitasi aplikasi komunikasi terenkripsi."
+        )
+
+    if not paragraphs:
+        paragraphs.append(
+            "Lanjutkan monitoring rutin dan koordinasi antar tim untuk memastikan situasi tetap terkendali."
+        )
+
+    # Pastikan minimal 4 paragraf
+    while len(paragraphs) < 4:
+        paragraphs.append(
+            "Lanjutkan koordinasi lintas satuan dan tingkatkan kewaspadaan operasional sesuai prioritas pimpinan."
+        )
+
+    return "\n\n".join(paragraphs)
 
 
 # Standard section labels (urutan WAJIB)
@@ -198,6 +366,29 @@ def _sanitize_output(text: str) -> str:
 
 def _build_user_prompt(data: dict) -> str:
     """Build the prompt text. Shared between providers."""
+    # Pre-compute checklist hints to force AI completeness
+    medmon_subjects = [it.get("subjek", "").strip() for it in data.get("medmon", []) if it.get("subjek")]
+    piket_satgas = sorted(set([(it.get("satgas") or "").upper().strip() for it in data.get("piket", []) if it.get("satgas")]))
+    kontra_names = [it.get("nama_to", "").strip() for it in data.get("kontra", []) if it.get("nama_to")]
+    geoint_total = len(data.get("geoint", []))
+    geoint_aktif = sum(1 for it in data.get("geoint", []) if str(it.get("status", "")).lower() == "aktif")
+    lid_count = len(data.get("lid", []))
+    gal_count = len(data.get("gal", []))
+
+    checklist = "=== CHECKLIST WAJIB DICANTUMKAN ===\n"
+    checklist += f"- MEDMON: WAJIB sebutkan {len(medmon_subjects)} subjek SEMUA dengan sentimen %: "
+    checklist += ", ".join(medmon_subjects) if medmon_subjects else "(tidak ada data)"
+    checklist += "\n"
+    checklist += f"- PIKET: WAJIB sebutkan SETIAP Satgas yang lapor ({len(piket_satgas)}): "
+    checklist += ", ".join(piket_satgas) if piket_satgas else "(tidak ada data)"
+    checklist += "\n"
+    checklist += f"- KONTRA: WAJIB sebutkan nama TO ({len(kontra_names)}): "
+    checklist += ", ".join(kontra_names) if kontra_names else "(tidak ada data)"
+    checklist += "\n"
+    checklist += f"- GEOINT: WAJIB sebutkan total {geoint_total} titik OPM (aktif {geoint_aktif})\n"
+    checklist += f"- LID: {lid_count} berita | GAL: {gal_count} konten\n"
+    checklist += "- REKOMENDASI: WAJIB minimal 4 PARAGRAF terpisah, masing-masing actionable.\n\n"
+
     return (
         "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI dengan mengikuti TEMPLATE FORMAT BAKU di bawah ini.\n\n"
         "=== ATURAN WAJIB ===\n"
@@ -207,20 +398,27 @@ def _build_user_prompt(data: dict) -> str:
         "diakhiri dengan tanda titik dua ':' .\n"
         "3. Isi konten dimulai pada baris BERIKUTNYA setelah label.\n"
         "4. JANGAN gunakan markdown (#, **, _, *, -). JANGAN bold/italic.\n"
-        "5. Pada bagian MEDMON: setiap subjek di baris terpisah dengan format "
-        "'N. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — ringkasan.'\n"
-        "6. Pada bagian REKOMENDASI: tiap rekomendasi adalah PARAGRAF terpisah (bukan bullet, bukan nomor).\n"
-        "7. Bila bagian COG (ACEH/JAKARTA/PAPUA/INTERNASIONAL) tidak ada data, tulis PERSIS: "
+        "5. Pada bagian MEDMON: WAJIB cantumkan SEMUA subjek tanpa kecuali (lihat checklist di bawah). "
+        "Format: 'N. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — ringkasan 1 kalimat.'\n"
+        "6. Pada bagian PIKET: WAJIB cantumkan SEMUA satgas yang melapor (Tek/Sandi/Medis), bukan hanya satu. "
+        "Format: 'Satgas Tek ...; Satgas Sandi ...; Satgas Medis ...' atau paragraf yang menyebut tiap satgas.\n"
+        "7. Pada bagian KONTRA: WAJIB cantumkan SEMUA nama TO yang ada di data.\n"
+        "8. Pada bagian REKOMENDASI: WAJIB MINIMAL 4 paragraf terpisah, masing-masing 1-2 kalimat, "
+        "action-oriented (verb di depan: 'Koordinasi...', 'Intensifkan...', 'Akselerasi...', 'Tingkatkan...'). "
+        "Bukan bullet, bukan nomor — paragraf biasa dipisah baris kosong.\n"
+        "9. Bila bagian COG (ACEH/JAKARTA/PAPUA/INTERNASIONAL) tidak ada data, tulis PERSIS: "
         "'Tidak ada perkembangan signifikan terpantau periode ini.'\n"
-        "8. Output hanya teks bersih (plain text) — tidak ada penjelasan/komentar tambahan di luar format.\n"
-        "9. Total panjang maksimal 500 kata.\n"
-        "10. Bahasa Indonesia formal gaya laporan intelijen militer.\n\n"
+        "10. Output hanya teks bersih (plain text) — tidak ada penjelasan/komentar tambahan di luar format.\n"
+        "11. Target panjang: 500-800 kata. JANGAN potong di tengah section.\n"
+        "12. Bahasa Indonesia formal gaya laporan intelijen militer dengan analisa mendalam (bukan sekedar restate data).\n\n"
+        + checklist +
         "=== TEMPLATE FORMAT BAKU ===\n"
         + FORMAT_TEMPLATE_EXAMPLE +
         "\n=== DATA HARI INI ===\n"
         + _format_payload(data) +
-        "\n\nSekarang tulis EXECUTIVE SUMMARY mengikuti template baku di atas. "
-        "Mulai langsung dari 'RINGKASAN EKSEKUTIF:' tanpa preamble."
+        "\n\nSekarang tulis EXECUTIVE SUMMARY LENGKAP mengikuti template & checklist di atas. "
+        "Pastikan SEMUA item di checklist ter-cover. Mulai langsung dari 'RINGKASAN EKSEKUTIF:' tanpa preamble. "
+        "JANGAN BERHENTI sebelum REKOMENDASI berisi minimal 4 paragraf."
     )
 
 
@@ -239,11 +437,11 @@ async def _generate_via_ollama(user_text: str, rd: str) -> str:
         "prompt": user_text,
         "stream": False,
         "options": {
-            "temperature": 0.15,         # Lebih deterministik = lebih disiplin ikut template
+            "temperature": 0.2,          # Sedikit naik (0.15 terlalu kaku, AI jadi "malas")
             "top_p": 0.9,
-            "repeat_penalty": 1.1,
-            "num_ctx": 6144,            # Cukup untuk system+template+data harian
-            "num_predict": 1500,        # Cap output token agar lengkap (≤500 kata)
+            "repeat_penalty": 1.05,
+            "num_ctx": 8192,             # Lebih besar untuk akomodasi checklist + data lengkap
+            "num_predict": 4000,         # Lebih besar agar tidak ter-truncate (target 500-800 kata)
         },
     }
     try:
