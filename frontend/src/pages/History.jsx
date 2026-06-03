@@ -157,59 +157,73 @@ export default function HistoryPage() {
           ) : items.length === 0 ? (
             <Empty text="Belum ada laporan tersimpan untuk filter ini." />
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-xs">
-                <thead>
-                  <tr className="overline text-left border-b border-zinc-800">
-                    <th className="pb-2 pt-1 pr-3">Tanggal Laporan</th>
-                    <th className="pb-2 pt-1 pr-3">Generated</th>
-                    <th className="pb-2 pt-1 pr-3">Absensi Tim</th>
-                    <th className="pb-2 pt-1 pr-3">AI</th>
-                    <th className="pb-2 pt-1 pr-3">Ukuran</th>
-                    <th className="pb-2 pt-1 text-right">Aksi</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {items.map((it) => (
-                    <tr key={it.id} className="border-b border-zinc-800/60 hover:bg-zinc-900/40" data-testid={`history-row-${it.id}`}>
-                      <td className="py-3 pr-3 font-mono text-amber-400 font-bold">{it.report_date}</td>
-                      <td className="py-3 pr-3 font-mono text-zinc-400">{fmtDate(it.generated_at)}</td>
-                      <td className="py-3 pr-3"><AttendanceBadges attendance={it.attendance || {}} /></td>
-                      <td className="py-3 pr-3">
-                        {it.has_ai_summary
-                          ? <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-emerald-500/15 text-emerald-400">YA</span>
-                          : <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-500">TDK</span>}
-                      </td>
-                      <td className="py-3 pr-3 font-mono text-zinc-400">{fmtSize(it.size_bytes)}</td>
-                      <td className="py-3 text-right space-x-1 whitespace-nowrap">
-                        <button
-                          onClick={() => preview(it)}
-                          data-testid={`history-preview-${it.id}`}
-                          className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/70 text-zinc-200 hover:text-amber-400 rounded-sm btn-tactical text-[10px]"
-                        >
-                          <Eye size={12} weight="bold" /> Preview
-                        </button>
-                        <button
-                          onClick={() => download(it)}
-                          data-testid={`history-download-${it.id}`}
-                          className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[10px]"
-                        >
-                          <DownloadSimple size={12} weight="bold" /> Unduh
-                        </button>
-                        {user?.role === "admin" && (
-                          <button
-                            onClick={() => del(it.id)}
-                            data-testid={`history-delete-${it.id}`}
-                            className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-red-900 border border-zinc-800 text-zinc-400 hover:text-red-300 rounded-sm text-[10px]"
-                          >
-                            <Trash size={12} weight="bold" />
-                          </button>
-                        )}
-                      </td>
+            <div className="relative">
+              <div
+                className="overflow-y-auto overflow-x-auto pr-1 history-scroll"
+                style={{ maxHeight: items.length > 7 ? "440px" : "auto" }}
+                data-testid="history-scroll-container"
+              >
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-zinc-950 z-10">
+                    <tr className="overline text-left border-b border-zinc-800">
+                      <th className="pb-2 pt-1 pr-3">Tanggal Laporan</th>
+                      <th className="pb-2 pt-1 pr-3">Generated</th>
+                      <th className="pb-2 pt-1 pr-3">Absensi Tim</th>
+                      <th className="pb-2 pt-1 pr-3">AI</th>
+                      <th className="pb-2 pt-1 pr-3">Ukuran</th>
+                      <th className="pb-2 pt-1 text-right">Aksi</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {items.map((it) => (
+                      <tr key={it.id} className="border-b border-zinc-800/60 hover:bg-zinc-900/40" data-testid={`history-row-${it.id}`}>
+                        <td className="py-3 pr-3 font-mono text-amber-400 font-bold">{it.report_date}</td>
+                        <td className="py-3 pr-3 font-mono text-zinc-400">{fmtDate(it.generated_at)}</td>
+                        <td className="py-3 pr-3"><AttendanceBadges attendance={it.attendance || {}} /></td>
+                        <td className="py-3 pr-3">
+                          {it.has_ai_summary
+                            ? <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-emerald-500/15 text-emerald-400">YA</span>
+                            : <span className="text-[10px] font-mono uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-800 text-zinc-500">TDK</span>}
+                        </td>
+                        <td className="py-3 pr-3 font-mono text-zinc-400">{fmtSize(it.size_bytes)}</td>
+                        <td className="py-3 text-right space-x-1 whitespace-nowrap">
+                          <button
+                            onClick={() => preview(it)}
+                            data-testid={`history-preview-${it.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-amber-500/70 text-zinc-200 hover:text-amber-400 rounded-sm btn-tactical text-[10px]"
+                          >
+                            <Eye size={12} weight="bold" /> Preview
+                          </button>
+                          <button
+                            onClick={() => download(it)}
+                            data-testid={`history-download-${it.id}`}
+                            className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[10px]"
+                          >
+                            <DownloadSimple size={12} weight="bold" /> Unduh
+                          </button>
+                          {user?.role === "admin" && (
+                            <button
+                              onClick={() => del(it.id)}
+                              data-testid={`history-delete-${it.id}`}
+                              className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-red-900 border border-zinc-800 text-zinc-400 hover:text-red-300 rounded-sm text-[10px]"
+                            >
+                              <Trash size={12} weight="bold" />
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {items.length > 7 && (
+                <div className="mt-2 flex items-center justify-between text-[10px] font-mono uppercase tracking-wider text-zinc-500">
+                  <span data-testid="history-scroll-hint">
+                    Menampilkan 7 terbaru — geser ke bawah untuk arsip lama (total {items.length} arsip)
+                  </span>
+                  <span className="text-amber-500/70">↓ scroll</span>
+                </div>
+              )}
             </div>
           )}
         </Card>
