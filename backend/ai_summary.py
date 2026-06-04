@@ -14,65 +14,81 @@ SYSTEM_PROMPT = (
     "Tugas Anda menyusun EXECUTIVE SUMMARY harian yang ringkas, padat, langsung-pakai, dan ANALITIS untuk pimpinan, "
     "dari laporan tim LID, KONTRA, GAL, MEDMON, GEOINT, dan PIKET. "
     "Output WAJIB dalam Bahasa Indonesia formal gaya laporan intelijen militer. "
-    "JANGAN copy kalimat dari contoh yang diberikan—pelajari STRUKTUR dan GAYA-nya saja, "
-    "lalu ISI dengan analisa berdasarkan data nyata hari ini. "
-    "JANGAN sertakan placeholder seperti 'ringkasan 1 kalimat', 'Paragraf N — ...', 'X%/Y%/Z%', "
-    "atau text instruksi apapun dalam output. SEMUA harus berupa kalimat analisa lengkap. "
-    "JANGAN copy-paste raw text mentah dari data (mis. 'LAPORAN KEGIATAN', 'I. FAKTA FAKTA', '1. TIM XXX', "
-    "'SUBSATGAS') — RINGKAS jadi 1-2 kalimat per item. "
+    "Pelajari STRUKTUR dan GAYA contoh yang diberikan—lalu ISI dengan analisa berdasarkan data nyata hari ini. "
+    "JANGAN copy kalimat dari contoh secara harfiah. "
+    "JANGAN sertakan placeholder, instruksi, atau text 'ATURAN WAJIB/CHECKLIST/TEMPLATE' dalam output. "
     "JANGAN gunakan markdown (#, **, _, *). "
-    "Pada bagian REKOMENDASI: tulis daftar bullet dengan awalan tanda '-' (dash), "
-    "setiap rekomendasi 1-2 kalimat action-oriented. "
-    "Pada bagian MEDMON: setiap subjek di baris terpisah dengan format "
-    "'1. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — analisa konkret berdasarkan berita/data subjek tersebut.' "
-    "Pada bagian PIKET: jelaskan SECARA SPESIFIK isi laporan tiap satgas yang lapor (Tek/Sandi/Medis) "
-    "dalam 1-2 kalimat ringkas per satgas, jangan dump raw text laporan, jangan placeholder '...'. "
-    "Pada bagian LID: tulis 1-2 kalimat ringkas mencakup berita trending utama hari ini. "
-    "Pada bagian KONTRA: sebutkan nama TO + tipe ancaman/sumber dalam 1-2 kalimat. "
-    "Pada bagian GAL: sebutkan kategori konten dominan + contoh judulnya dalam 1-2 kalimat. "
-    "RINGKASAN EKSEKUTIF wajib panjang 4-6 kalimat analitis yang merangkum tema utama lintas tim."
+    "JANGAN copy-paste raw text mentah dari data ('LAPORAN KEGIATAN', 'I. FAKTA FAKTA', '1. TIM XXX', 'SUBSATGAS')—RINGKAS jadi 1-2 kalimat per item. "
+    "Format-specific rules: "
+    "(1) RINGKASAN EKSEKUTIF wajib 1 paragraf panjang 5-8 kalimat analitis lintas tim. "
+    "(2) ACEH/JAKARTA/PAPUA/INTERNASIONAL wajib 2-4 kalimat per region. "
+    "(3) LID, GAL, dan PIKET menggunakan bullet '•' untuk daftar sub-item. "
+    "(4) KONTRA dan GEOINT ditulis sebagai paragraf padat 2-4 kalimat. "
+    "(5) MEDMON menggunakan format khusus: '• Subjek (±X% positif)' diikuti baris 'a. Positif: ...' "
+    "dan 'b. Negatif: ...' jika ada breakdown; atau paragraf 1-2 kalimat untuk subjek yang lebih sederhana. "
+    "(6) REKOMENDASI: daftar bullet '•' minimal 4 poin action-oriented (Koordinasi.../Intensifkan.../Akselerasi.../Tingkatkan...)."
 )
 
 
 FORMAT_TEMPLATE_EXAMPLE = """\
 RINGKASAN EKSEKUTIF:
-Hari ini (02/06/2026) tercatat tiga titik tekanan domestik: eskalasi protes petani tebu Blora dengan aksi destruktif, polarisasi publik atas film "Pesta Babi" terkait agraria Papua, dan kontroversi MBG yang mempertahankan sentimen negatif tinggi (35,7%). Ancaman hybrid meningkat dengan terdeteksinya tiga aktor strategis Papua (dua individu kunci, satu LSM) serta serangan siber terhadap aplikasi terenkripsi Signal. Pimpinan perlu mewaspadai potensi konvergensi isu agraria Papua–aktivisme struktural dan kelemahan tata kelola program pemerintah sebagai pintu masuk destabilisasi narasi.
+Hari ini (04/06/2026) terpantau dinamika tekanan narasi domestik yang didominasi isu tata kelola Program Makan Bergizi Gratis (MBG), stabilitas politik pemerintah, serta meningkatnya perhatian pada isu Papua dan kebijakan lingkungan/ketenagakerjaan. Sentimen media monitoring menunjukkan pola campuran dengan kecenderungan positif moderat pada seluruh objek utama, namun disertai eskalasi narasi kritis terkait dugaan penyimpangan program publik, transparansi penegakan hukum, dan kebijakan pembangunan. Di sisi lain, aktivitas digital menunjukkan intensifikasi kampanye kontra-opini lintas platform dengan isu ekonomi, agraria, dan kebijakan kesehatan sebagai pengungkit utama. Risiko utama hari ini berasal dari konvergensi isu kebijakan publik (MBG, regulasi tembakau, PSN Papua) dengan amplifikasi narasi digital yang berpotensi meningkatkan polarisasi opini.
 
 1. ACEH:
-Tidak ada perkembangan signifikan terpantau periode ini.
+Tidak terpantau dinamika eskalatif signifikan. Aktivitas lebih banyak terkait isu lingkungan dan konservasi (monitoring ekosistem Leuser) tanpa indikasi gangguan stabilitas.
 
 2. JAKARTA:
-Sentimen Presiden menunjukkan polarisasi ketat (positif 40,27%, negatif 34,06%) di tengah liputan diplomasi Qatar, memerlukan penguatan narasi capaian konkret.
+Sentimen terhadap Presiden berada pada level positif moderat (±39,1%) dengan dominasi pemberitaan penegakan integritas program MBG dan sikap tegas terhadap korupsi. Namun sentimen negatif tetap tinggi akibat isu tata kelola program dan persepsi publik terhadap konsistensi implementasi kebijakan. Dinamika ini menunjukkan polarisasi opini yang masih kuat pada isu domestik prioritas pemerintah.
 
 3. PAPUA:
-Total satu titik OPM termonitor (AKTIF: 1), Zakius Sondegau di Tembagapura, Mimika, Papua Tengah. Polemik film "Pesta Babi" memicu mobilisasi aktor advokasi struktural (Johny Teddy Wakum, Vincentius Siep) dengan dukungan JATAM sebagai simpul LSM pertambangan–agraria.
+Isu Papua meningkat dalam konteks narasi pembangunan (PSN), hak masyarakat adat, dan keamanan wilayah. Terdapat konsolidasi opini pro-kontra terkait proyek strategis nasional dan isu pendekatan keamanan. GEOINT mencatat keberadaan 12 titik aktivitas kelompok bersenjata/aktor lokal aktif di sejumlah wilayah Papua Pegunungan, Tengah, dan Barat, yang menunjukkan konsentrasi pada zona rawan operasional. Potensi eskalasi tetap terbuka pada momen momentum sosial dan isu lingkungan.
 
 4. INTERNASIONAL:
-Tidak ada perkembangan signifikan terpantau periode ini.
+Tidak terpantau eskalasi geopolitik langsung, namun terdapat indikasi risiko maritim terkait aktivitas kapal asing di kawasan Natuna dan Selat Malaka yang memerlukan perhatian pengawasan lintas instansi.
 
-LID: Aksi "Tumpah Tebu" ratusan petani Blora di PT GMM mengindikasikan kegagalan perjanjian Bulog dan eskalasi metode protes destruktif yang berpotensi menular ke daerah lain jika tidak dimitigasi segera.
+LID:
+Isu dominan hari ini berasal dari:
+• Regulasi kesehatan dan ketenagakerjaan (RPMK kemasan rokok) yang memicu resistensi industri.
+• Narasi pembangunan Papua yang dikaitkan dengan isu lingkungan dan hak masyarakat adat. Belum terdapat aksi massa besar terkonfirmasi, namun pola mobilisasi opini digital meningkat signifikan.
 
-KONTRA: Teridentifikasi tiga TO prioritas: Johny Teddy Wakum (aktor advokasi struktural Papua-agraria), Vincentius Siep (aktivis mahasiswa Papua Jakarta berkembang jadi simpul strategis), dan JATAM (LSM jaringan advokasi tambang sejak 1995 dengan kapasitas mobilisasi lintas wilayah).
+KONTRA:
+Teridentifikasi tiga TO prioritas: Wilson Lalengke (aktor komunikator strategis PPWI dengan kapasitas konsolidasi narasi kritis lintas isu HAM, kebebasan pers, agraria, dan Papua serta potensi amplifikasi opini melalui jaringan media alternatif dan forum internasional), Forum Konservasi Leuser/FKL (aktor konservasi non-kinetik berbasis Aceh dengan kapasitas pressure opini lingkungan yang dapat memengaruhi kebijakan tata kelola sumber daya alam dan memperkuat isu lingkungan–pembangunan), serta Rudi Kabak (aktor jejaring informasi muda Papua dengan keterhubungan pada simpul mahasiswa/AMP yang berpotensi memperkuat amplifikasi narasi HAM, penolakan kebijakan pembangunan, dan solidaritas lintas kota dalam isu Papua).
 
-GAL: Konten dominan kontra-opini difokuskan pada tiga kategori: isu sapi kurban APBN (meme, video, narasi), kontroversi film "Pesta Babi" (narasi, meme, video), dan dukungan persidangan terbuka Andrie Yunus (meme).
+GAL:
+Konten Cipta/kontra-opini:
+• Isu kebijakan kesehatan (RPMK kemasan rokok dan dampak industri).
+• Isu Papua (PSN, pembangunan, dan hak masyarakat adat).
+• Transparansi hukum militer dan keadilan dalam kasus AY.
+Bentuk: meme, video pendek, dan narasi opini lintas platform.
 
 MEDMON:
-1. Presiden: positif 40,27%/negatif 34,06%/netral 25,67% — polarisasi ketat meski liputan diplomasi Qatar positif, butuh penguatan narasi hasil konkret.
-2. Panglima TNI: positif 56,2%/negatif 17,0%/netral 26,8% — pemakaman Ryamizard Ryacudu mempertahankan citra positif institusi.
-3. MBG: positif 48,2%/negatif 35,7%/netral 16,1% — kritik tata kelola tetap tinggi meski upaya standardisasi SPPG berjalan.
-4. Andrie Yunus: positif 57,4%/negatif 31,7%/netral 10,9% — momentum persidangan terbuka diharapkan tingkatkan kepercayaan publik terhadap proses hukum.
-5. Indonesia Gelap: positif 46,1%/negatif 27,3%/netral 26,6% — opini WhatsApp menyoroti masalah perencanaan MBG.
+• Presiden (±39,1% positif)
+a. Positif: penegasan integritas MBG dan sikap antikorupsi.
+b. Negatif: isu tata kelola program dan persepsi ketidakkonsistenan implementasi.
+• Panglima TNI (±61,5% positif)
+Dominasi sentimen positif dari narasi diplomasi pertahanan dan penguatan kerja sama internasional. Negatif relatif rendah, terkait dinamika kelembagaan internal.
+• MBG (±40,5% positif)
+a. Positif: reformasi kelembagaan dan penguatan pengawasan.
+b. Negatif: distribusi, dugaan penyimpangan, dan kesiapan operasional.
+• Andrie Yunus (±46,7% positif)
+Sentimen campuran dengan sorotan pada persepsi keadilan proses hukum.
+• Indonesia Gelap (±39% positif)
+Didominasi narasi kritik terhadap kebijakan MBG dan tata kelola program strategis.
 
-GEOINT: Satu titik OPM aktif termonitor, Zakius Sondegau di Tembagapura (Mimika, Papua Tengah), zona operasi pertambangan.
+GEOINT:
+Terdeteksi 12 titik aktivitas aktif di wilayah Papua (Pegunungan Tengah, Intan Jaya, Mimika, Sorong, Yapen, Pegunungan Bintang, dan sekitarnya). Pola sebaran menunjukkan konsentrasi pada zona rawan operasional dengan karakter mobilitas lokal dan jaringan simpul kecil.
 
-PIKET: Satgas Tek mendeteksi infiltrasi kapal asing via AIS; Satgas Sandi mencatat serangan phishing canggih terhadap pengguna Signal; Satgas Medis melaporkan lonjakan leptospirosis Gunungkidul (6 kematian).
+PIKET:
+• Satgas Sandi melaporkan Waspadai Kejahatan SIM Swap yang Bisa Menguras Rekening.
+• Satgas Medis melaporkan Pelemahan Rupiah Dorong Kenaikan Harga Obat di Surabaya.
+• Satgas Tek melaporkan pemantauan pergerakan kapal asing yang memasuki wilayah perairan Indonesia berdasarkan Automatic Identification System (AIS) serta pola pelayaran kapal berbasis aplikasi SeaVis.
 
 REKOMENDASI:
-• Koordinasi Kemenko Polkam, Kementan, Bulog mitigasi eskalasi protes petani Blora melalui negosiasi teknis perjanjian tebu dan antisipasi penyebaran aksi destruktif.
-• Intensifkan pengawasan digital-fisik terhadap Johny Teddy Wakum, Vincentius Siep, JATAM terkait eksploitasi isu film "Pesta Babi" sebagai trigger mobilisasi agraria Papua.
-• Akselerasi publikasi standardisasi SPPG dan audit transparan MBG untuk menekan narasi negatif dan memulihkan kepercayaan publik.
-• Tingkatkan keamanan siber infrastruktur komunikasi pemerintah mengantisipasi teknik phishing Signal dan AIS spoofing.
-• Koordinasi Satkowil Papua–Kodam XVII/XVIII cegah konvergensi aktor OPM-aktivis struktural di zona pertambangan Mimika.
+• Koordinasi kementerian/lembaga terkait untuk memitigasi eskalasi Ribuan Pekerja Rokok Tembakau Tolak Rancangan Aturan Kemasan Kemenkes RI, melalui sinkronisasi narasi resmi dan respons cepat terhadap potensi keresahan publik.
+• Intensifkan pengawasan digital-fisik terhadap Wilson Lalengke, Forum Konservasi Leuser (FKL), dan Rudi Kabak untuk mendeteksi dini rencana aksi dan mengamankan agenda strategis nasional.
+• Akselerasi publikasi capaian dan komunikasi strategis terkait MBG, Presiden, Andrie Yunus untuk menekan narasi negatif dan memulihkan kepercayaan publik.
+• Koordinasi Kodam wilayah Papua untuk memantau 12 titik OPM aktif dan mencegah konvergensi aktor bersenjata dengan aktivis struktural di zona pertambangan.
+• Tingkatkan keamanan siber infrastruktur komunikasi pemerintah guna mengantisipasi teknik phishing dan eksploitasi aplikasi komunikasi terenkripsi.
 """
 
 
@@ -151,6 +167,11 @@ async def generate_ai_summary(data: dict) -> str:
 
     cleaned = _sanitize_output(raw)
     cleaned = _enforce_completeness(cleaned, data)
+    # Final pass: cleanup double dots & whitespace introduced by enforcement
+    import re
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
+    cleaned = re.sub(r"\s+\.", ".", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
     return cleaned
 
 
@@ -179,7 +200,6 @@ def _enforce_completeness(text: str, data: dict) -> str:
     medmon_items = data.get("medmon", [])
     if medmon_items:
         has, body = has_section("MEDMON")
-        # Build dict { subj_lower: analisa_string }
         subj_data = {}
         for it in medmon_items:
             subj = (it.get("subjek") or "").strip()
@@ -193,25 +213,24 @@ def _enforce_completeness(text: str, data: dict) -> str:
                     if isinstance(first, dict):
                         analisa = (first.get("judul") or first.get("ringkasan") or "").strip()
             analisa = analisa or "sentimen termonitor pada periode pelaporan."
+            sp = it.get("sentiment_positif", 0)
             subj_data[subj.lower()] = {
                 "subj": subj,
-                "sp": it.get("sentiment_positif", 0),
+                "sp": sp,
                 "sn": it.get("sentiment_negatif", 0),
                 "snt": it.get("sentiment_netral", 0),
-                "analisa": analisa[:400],
+                "analisa": _clean_raw_text(analisa)[:400],
             }
 
-        # Rebuild seluruh MEDMON body untuk ensure setiap subjek lengkap & ada analisa
+        # Build dalam format baru: '• Subj (±X% positif)' + 1-2 baris analisa
         rebuilt_lines = []
-        for i, (key, d) in enumerate(subj_data.items(), start=1):
-            rebuilt_lines.append(
-                f"{i}. {d['subj']}: positif {d['sp']}%/negatif {d['sn']}%/netral {d['snt']}% — {d['analisa']}"
-            )
+        for d in subj_data.values():
+            rebuilt_lines.append(f"• {d['subj']} (±{d['sp']}% positif)")
+            rebuilt_lines.append(d['analisa'])
 
-        # Check if existing body sudah baik (ada semua subjek + ada analisa text > 30 char per line)
         body_has_all = all(d["subj"].lower() in body.lower() for d in subj_data.values())
         body_has_analisa = all(
-            re.search(rf"{re.escape(d['subj'])}.*?—\s*\S.{{30,}}", body, re.IGNORECASE | re.DOTALL)
+            re.search(rf"{re.escape(d['subj'])}.*?\n.{{30,}}", body, re.IGNORECASE | re.DOTALL)
             for d in subj_data.values()
         )
 
@@ -251,12 +270,16 @@ def _enforce_completeness(text: str, data: dict) -> str:
             and not re.search(rf"\b{re.escape(sg)}\b", body, re.IGNORECASE)
         ]
         if missing_satgas or has_placeholder or has_raw_dump:
-            # Replace seluruh isi PIKET dengan versi ringkas dari data
+            # Replace seluruh isi PIKET dengan versi bullet ringkas dari data
             chunks = []
-            for sg, items in by_satgas.items():
+            satgas_order = ["SANDI", "MEDIS", "TEK"]  # Konsisten dengan template
+            ordered_keys = [k for k in satgas_order if k in by_satgas] + \
+                          [k for k in by_satgas.keys() if k not in satgas_order]
+            for sg in ordered_keys:
+                items = by_satgas[sg]
                 items_text = "; ".join(items[:2])
-                chunks.append(f"Satgas {sg.title()} melaporkan {items_text}.")
-            full_piket_body = " ".join(chunks)
+                chunks.append(f"• Satgas {sg.title()} melaporkan {items_text}.")
+            full_piket_body = "\n".join(chunks)
             text = _replace_section_body(text, "PIKET", full_piket_body)
 
     # ----- 4) LID: pastikan ada konten ringkas -----
@@ -627,9 +650,13 @@ def _sanitize_output(text: str) -> str:
             new_body = "\n"
         text = before + new_body + tail
 
-    # 8) Cleanup excessive blank lines & trailing whitespace
+    # 8) Cleanup excessive blank lines, trailing whitespace & double dots
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     text = "\n".join(line.rstrip() for line in text.split("\n"))
+    # Fix double/triple dots that appear when joining clean text
+    text = re.sub(r"\.{2,}", ".", text)
+    # Fix ".." or " .." after sentences
+    text = re.sub(r"\s+\.", ".", text)
 
     return text
 
