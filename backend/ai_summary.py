@@ -18,12 +18,18 @@ SYSTEM_PROMPT = (
     "lalu ISI dengan analisa berdasarkan data nyata hari ini. "
     "JANGAN sertakan placeholder seperti 'ringkasan 1 kalimat', 'Paragraf N — ...', 'X%/Y%/Z%', "
     "atau text instruksi apapun dalam output. SEMUA harus berupa kalimat analisa lengkap. "
+    "JANGAN copy-paste raw text mentah dari data (mis. 'LAPORAN KEGIATAN', 'I. FAKTA FAKTA', '1. TIM XXX', "
+    "'SUBSATGAS') — RINGKAS jadi 1-2 kalimat per item. "
     "JANGAN gunakan markdown (#, **, _, *). "
     "Pada bagian REKOMENDASI: tulis daftar bullet dengan awalan tanda '-' (dash), "
     "setiap rekomendasi 1-2 kalimat action-oriented. "
     "Pada bagian MEDMON: setiap subjek di baris terpisah dengan format "
     "'1. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — analisa konkret berdasarkan berita/data subjek tersebut.' "
-    "Pada bagian PIKET: jelaskan SECARA SPESIFIK isi laporan tiap satgas yang lapor (jangan placeholder '...'). "
+    "Pada bagian PIKET: jelaskan SECARA SPESIFIK isi laporan tiap satgas yang lapor (Tek/Sandi/Medis) "
+    "dalam 1-2 kalimat ringkas per satgas, jangan dump raw text laporan, jangan placeholder '...'. "
+    "Pada bagian LID: tulis 1-2 kalimat ringkas mencakup berita trending utama hari ini. "
+    "Pada bagian KONTRA: sebutkan nama TO + tipe ancaman/sumber dalam 1-2 kalimat. "
+    "Pada bagian GAL: sebutkan kategori konten dominan + contoh judulnya dalam 1-2 kalimat. "
     "RINGKASAN EKSEKUTIF wajib panjang 4-6 kalimat analitis yang merangkum tema utama lintas tim."
 )
 
@@ -120,7 +126,9 @@ def _format_payload(data: dict) -> str:
 
     lines.append("\n== PIKET (Satgas Tek/Sandi/Medis) ==")
     for it in data.get("piket", []):
-        lines.append(f"- [{it.get('satgas','').upper()}] {it.get('judul','')}: {it.get('isi','')[:180]}")
+        judul_clean = _clean_raw_text(it.get("judul") or "")
+        isi_clean = _first_sentences(_clean_raw_text(it.get("isi") or ""), 220)
+        lines.append(f"- [{it.get('satgas','').upper()}] {judul_clean} | Ringkasan: {isi_clean}")
 
     return "\n".join(lines)
 
@@ -219,31 +227,122 @@ def _enforce_completeness(text: str, data: dict) -> str:
     piket_items = data.get("piket", [])
     if piket_items:
         has, body = has_section("PIKET")
-        # Cek apakah ada placeholder "..." di body
+        # Cek apakah ada placeholder "..." di body atau raw dump (panjang > 500 char per line)
         has_placeholder = bool(re.search(r"Satgas\s+\w+\s*\.{2,}", body, re.IGNORECASE))
-        # Group by satgas
+        # Detect raw dump: body terlalu panjang & ada penanda struktural raw
+        has_raw_dump = (
+            len(body) > 600 and (
+                "FAKTA FAKTA" in body.upper()
+                or re.search(r"\bI\.\s+FAKTA", body, re.IGNORECASE)
+                or "TIM BIOKIM" in body.upper()
+                or "SUBSATGAS" in body.upper()
+            )
+        )
+        # Group by satgas dengan isi YANG SUDAH DICLEAN
         by_satgas: dict[str, list[str]] = {}
         for it in piket_items:
             sg = (it.get("satgas") or "").upper().strip()
             if sg:
-                judul = (it.get("judul") or "").strip()
-                isi = (it.get("isi") or "").strip()
-                snippet = f"{judul}: {isi}" if isi and judul else (judul or isi)
-                by_satgas.setdefault(sg, []).append(snippet[:300])
+                judul = _clean_raw_text(it.get("judul") or "")
+                isi = _clean_raw_text(it.get("isi") or "")
+                # Ringkas: ambil 1-2 kalimat pertama dari isi (atau judul kalau isi pendek)
+                short_isi = _first_sentences(isi, max_chars=200) if isi else judul
+                snippet = short_isi if short_isi else judul
+                if snippet:
+                    by_satgas.setdefault(sg, []).append(snippet[:250])
         missing_satgas = [
             sg for sg in by_satgas
             if not re.search(rf"\bsatgas\s+{re.escape(sg)}\b", body, re.IGNORECASE)
             and not re.search(rf"\b{re.escape(sg)}\b", body, re.IGNORECASE)
         ]
-        if missing_satgas or has_placeholder:
-            # Replace seluruh isi PIKET dengan versi lengkap dari data
+        if missing_satgas or has_placeholder or has_raw_dump:
+            # Replace seluruh isi PIKET dengan versi ringkas dari data
             chunks = []
             for sg, items in by_satgas.items():
-                items_text = "; ".join(items[:3])
+                items_text = "; ".join(items[:2])
                 chunks.append(f"Satgas {sg.title()} melaporkan {items_text}.")
             full_piket_body = " ".join(chunks)
-            # Replace section body
             text = _replace_section_body(text, "PIKET", full_piket_body)
+
+    # ----- 4) LID: pastikan ada konten ringkas -----
+    lid_items = data.get("lid", [])
+    if lid_items:
+        has, body = has_section("LID")
+        if not has or len(body.strip()) < 40:
+            # Generate fallback dari data: ambil judul + analisa berita prioritas
+            top = lid_items[0]
+            judul = _clean_raw_text(top.get("judul") or "")
+            fakta = _clean_raw_text(top.get("fakta") or "")
+            analisa = _clean_raw_text(top.get("analisa") or "")
+            primary = analisa or fakta
+            if judul:
+                body_text = f"{judul}{' — ' + _first_sentences(primary, 220) if primary else '.'}"
+            else:
+                body_text = _first_sentences(primary, 260) or "Berita trending termonitor."
+            if len(lid_items) > 1:
+                others = ", ".join((_clean_raw_text(i.get("judul") or "") or "")[:60] for i in lid_items[1:4])
+                others = others.strip(", ")
+                if others:
+                    body_text += f" Selain itu termonitor: {others}."
+            if has:
+                text = _replace_section_body(text, "LID", body_text)
+            else:
+                text = _insert_section_before(text, "LID", body_text, ["KONTRA", "GAL", "MEDMON", "GEOINT", "PIKET", "REKOMENDASI"])
+
+    # ----- 5) KONTRA: pastikan ada konten ringkas dengan nama TO -----
+    kontra_items = data.get("kontra", [])
+    if kontra_items:
+        has, body = has_section("KONTRA")
+        all_named = all(
+            (k.get("nama_to") or "").strip().lower() in body.lower()
+            for k in kontra_items if k.get("nama_to")
+        )
+        if not has or len(body.strip()) < 40 or not all_named:
+            chunks = []
+            for k in kontra_items[:5]:
+                nama = (k.get("nama_to") or "").strip()
+                sumber = (k.get("sumber") or "").strip()
+                tipe = (k.get("tipe") or "").strip()
+                ket = _clean_raw_text(k.get("keterangan") or "")
+                desc = _first_sentences(ket, 120) if ket else ""
+                chunk = nama
+                if tipe or sumber:
+                    chunk += f" ({tipe}{', ' + sumber if sumber else ''})"
+                if desc:
+                    chunk += f": {desc}"
+                chunks.append(chunk)
+            body_text = (
+                f"Teridentifikasi {len(kontra_items)} TO prioritas: "
+                + "; ".join(chunks) + "."
+            )
+            if has:
+                text = _replace_section_body(text, "KONTRA", body_text)
+            else:
+                text = _insert_section_before(text, "KONTRA", body_text, ["GAL", "MEDMON", "GEOINT", "PIKET", "REKOMENDASI"])
+
+    # ----- 6) GAL: pastikan ada konten ringkas -----
+    gal_items = data.get("gal", [])
+    if gal_items:
+        has, body = has_section("GAL")
+        if not has or len(body.strip()) < 40:
+            # Group by kategori
+            by_cat: dict[str, list[str]] = {}
+            for g in gal_items:
+                cat = (g.get("kategori") or "lain-lain").lower()
+                judul = _clean_raw_text(g.get("judul") or "")
+                if judul:
+                    by_cat.setdefault(cat, []).append(judul[:60])
+            cat_parts = []
+            for cat, titles in by_cat.items():
+                cat_parts.append(f"{cat} ({', '.join(titles[:3])})")
+            body_text = (
+                f"Konten galang difokuskan pada {len(by_cat)} kategori: "
+                + "; ".join(cat_parts) + "."
+            )
+            if has:
+                text = _replace_section_body(text, "GAL", body_text)
+            else:
+                text = _insert_section_before(text, "GAL", body_text, ["MEDMON", "GEOINT", "PIKET", "REKOMENDASI"])
 
     # ----- 3) REKOMENDASI: pastikan minimal 4 bullet -----
     has, body = has_section("REKOMENDASI")
@@ -257,6 +356,70 @@ def _enforce_completeness(text: str, data: dict) -> str:
             text = text.rstrip() + "\n\nREKOMENDASI:\n" + fallback
 
     return text
+
+
+def _clean_raw_text(s: str) -> str:
+    """Strip HTML tags, structural markers (I. FAKTA, 1. TIM, a., dst), excessive whitespace."""
+    if not s:
+        return ""
+    import re
+    # Strip HTML tags
+    s = re.sub(r"<[^>]+>", " ", s)
+    # Decode common entities
+    s = s.replace("&nbsp;", " ").replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", '"')
+    # Strip header laporan lengkap di awal (e.g. "LAPORAN HARIAN OPERASI TEKNIK SUBSATGAS ... :")
+    s = re.sub(r"LAPORAN\s+(?:HARIAN\s+)?(?:KEGIATAN\s+)?(?:OPERASI\s+)?[A-Z]+\s+SUBSATGAS[^:]*:\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"LAPORAN\s+(?:KEGIATAN|HARIAN)?[^:]*?TANGGAL\s+\d+\s+\w+\s+\d+\s*:?\s*", "", s, flags=re.IGNORECASE)
+    s = re.sub(r"Perkembangan\s+Situasi\s+Menonjol[^:]*:\s*", "", s, flags=re.IGNORECASE)
+    # Strip "SUBSATGAS XXX" mentions
+    s = re.sub(r"\bSUBSATGAS\s+[A-Z]+\b", "", s, flags=re.IGNORECASE)
+    # Strip structural roman headings like "I. FAKTA FAKTA", "II. ANALISA"
+    s = re.sub(r"\b[IVX]+\.\s+(FAKTA|ANALISA|REKOMENDASI|TINDAKAN|PENDAHULUAN)[\s—–:-]*(FAKTA|ANALISA|REKOMENDASI|TINDAKAN)?\.?\s*", " ", s, flags=re.IGNORECASE)
+    # Strip "1. TIM XXX." headers
+    s = re.sub(r"\b\d+\.\s+TIM\s+[A-Z]+\.?\s*", " ", s, flags=re.IGNORECASE)
+    # Strip "a. ", "b. " inline list markers
+    s = re.sub(r"(?m)^\s*[a-z]\.\s+", "", s)
+    s = re.sub(r"(?<=\s)[a-z]\.\s+", "", s)
+    # Strip standalone day/date markers (e.g., "SELASA, 04 JUNI 2026:")
+    s = re.sub(r"\b(SENIN|SELASA|RABU|KAMIS|JUMAT|SABTU|MINGGU),?\s*\d+\s+\w+\s+\d+\s*:?\s*", "", s, flags=re.IGNORECASE)
+    # Strip double titik dan whitespace
+    s = re.sub(r"\.+", ".", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    return s
+
+
+def _first_sentences(s: str, max_chars: int = 200) -> str:
+    """Ambil 1-2 kalimat pertama dari teks, max `max_chars` karakter."""
+    if not s:
+        return ""
+    import re
+    sentences = re.split(r"(?<=[\.\!\?])\s+", s.strip())
+    out = ""
+    for sent in sentences:
+        if not out:
+            out = sent
+        else:
+            candidate = out + " " + sent
+            if len(candidate) > max_chars:
+                break
+            out = candidate
+        if len(out) >= max_chars:
+            break
+    return out[:max_chars].rstrip(",;: ") + ("." if not out.endswith((".", "!", "?")) else "")
+
+
+def _insert_section_before(text: str, label: str, body: str, before) -> str:
+    """Insert a new section with `label` and `body` right before section `before`.
+    `before` can be a string or a list of fallback anchors (cari yang ada lebih dulu)."""
+    import re
+    anchors = [before] if isinstance(before, str) else list(before)
+    for anchor in anchors:
+        m = re.search(rf"(?m)^{re.escape(anchor)}:\s*$", text)
+        if m:
+            block = f"\n{label}:\n{body.strip()}\n\n"
+            return text[:m.start()] + block + text[m.start():]
+    # Fallback: append to end
+    return text.rstrip() + f"\n\n{label}:\n{body.strip()}\n\n"
 
 
 def _append_to_section(text: str, label: str, addition: str) -> str:
