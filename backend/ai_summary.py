@@ -36,48 +36,43 @@ SYSTEM_PROMPT = (
 
 FORMAT_TEMPLATE_EXAMPLE = """\
 RINGKASAN EKSEKUTIF:
-Hari ini (DD/MM/YYYY) tercatat tiga titik tekanan domestik: eskalasi protes petani tebu Blora dengan aksi destruktif, polarisasi publik atas film "Pesta Babi" terkait agraria Papua, dan kontroversi MBG yang mempertahankan sentimen negatif tinggi (35,7%). Ancaman hybrid meningkat dengan terdeteksinya tiga aktor strategis Papua (dua individu kunci, satu LSM) serta serangan siber terhadap aplikasi terenkripsi Signal. GEOINT mencatat 11 titik OPM aktif tersebar di delapan kabupaten Papua, terkonsentrasi di zona operasi Kodam Cenderawasih dan Kasuari. Pimpinan perlu mewaspadai potensi konvergensi isu agraria Papua–aktivisme struktural dan kelemahan tata kelola program pemerintah sebagai pintu masuk destabilisasi narasi.
+Hari ini (02/06/2026) tercatat tiga titik tekanan domestik: eskalasi protes petani tebu Blora dengan aksi destruktif, polarisasi publik atas film "Pesta Babi" terkait agraria Papua, dan kontroversi MBG yang mempertahankan sentimen negatif tinggi (35,7%). Ancaman hybrid meningkat dengan terdeteksinya tiga aktor strategis Papua (dua individu kunci, satu LSM) serta serangan siber terhadap aplikasi terenkripsi Signal. Pimpinan perlu mewaspadai potensi konvergensi isu agraria Papua–aktivisme struktural dan kelemahan tata kelola program pemerintah sebagai pintu masuk destabilisasi narasi.
 
 1. ACEH:
 Tidak ada perkembangan signifikan terpantau periode ini.
 
 2. JAKARTA:
-Sentimen Presiden menunjukkan polarisasi ketat (positif 40,27%, negatif 34,06%) di tengah liputan diplomasi Qatar, memerlukan penguatan narasi capaian konkret untuk menyeimbangkan persepsi domestik.
+Sentimen Presiden menunjukkan polarisasi ketat (positif 40,27%, negatif 34,06%) di tengah liputan diplomasi Qatar, memerlukan penguatan narasi capaian konkret.
 
 3. PAPUA:
-Polemik film "Pesta Babi" berkembang dari isu agraria menjadi instrumen polarisasi oleh jaringan advokasi (JATAM, Johny Teddy Wakum, Vincentius Siep) dengan potensi eksploitasi sentimen anti-pemerintah. GEOINT mencatat 11 titik OPM aktif di Maybrat, Biak Numfor, Mimika, Intan Jaya, Puncak Jaya, Sorong, Yapen, dan Pegubin—semuanya status aktif dan terkonsentrasi di zona 1-3 operasi Cenderawasih dan Kasuari.
+Total satu titik OPM termonitor (AKTIF: 1), Zakius Sondegau di Tembagapura, Mimika, Papua Tengah. Polemik film "Pesta Babi" memicu mobilisasi aktor advokasi struktural (Johny Teddy Wakum, Vincentius Siep) dengan dukungan JATAM sebagai simpul LSM pertambangan–agraria.
 
 4. INTERNASIONAL:
 Tidak ada perkembangan signifikan terpantau periode ini.
 
-LID:
-Aksi "Tumpah Tebu" ratusan petani Blora di PT GMM mengindikasikan kegagalan perjanjian Bulog dan eskalasi metode protes destruktif yang berpotensi menular ke daerah lain jika tidak dimitigasi segera.
+LID: Aksi "Tumpah Tebu" ratusan petani Blora di PT GMM mengindikasikan kegagalan perjanjian Bulog dan eskalasi metode protes destruktif yang berpotensi menular ke daerah lain jika tidak dimitigasi segera.
 
-KONTRA:
-Teridentifikasi tiga TO prioritas: Johny Teddy Wakum (aktor advokasi struktural Papua-agraria), Vincentius Siep (aktivis mahasiswa Papua Jakarta berkembang jadi simpul strategis), dan JATAM (LSM jaringan advokasi tambang sejak 1995 dengan kapasitas mobilisasi lintas wilayah).
+KONTRA: Teridentifikasi tiga TO prioritas: Johny Teddy Wakum (aktor advokasi struktural Papua-agraria), Vincentius Siep (aktivis mahasiswa Papua Jakarta berkembang jadi simpul strategis), dan JATAM (LSM jaringan advokasi tambang sejak 1995 dengan kapasitas mobilisasi lintas wilayah).
 
-GAL:
-Konten dominan kontra-opini difokuskan pada tiga kategori: isu sapi kurban APBN (meme, video, narasi), kontroversi film "Pesta Babi" (narasi, meme, video), dan dukungan persidangan terbuka Andrie Yunus (meme).
+GAL: Konten dominan kontra-opini difokuskan pada tiga kategori: isu sapi kurban APBN (meme, video, narasi), kontroversi film "Pesta Babi" (narasi, meme, video), dan dukungan persidangan terbuka Andrie Yunus (meme).
 
 MEDMON:
-1. Presiden: positif 40,27%/negatif 34,06%/netral 25,67% — pemberitaan pertemuan dengan Wakil PM Qatar mendominasi sentimen positif, namun sentimen negatif masih tinggi terkait isu domestik MBG dan kebijakan agraria.
-2. Panglima TNI: positif 56,2%/negatif 17,0%/netral 26,8% — pemakaman Jenderal (Purn) Ryamizard Ryacudu meningkatkan citra positif TNI melalui narasi penghormatan dan profesionalisme institusi.
-3. MBG: positif 48,2%/negatif 35,7%/netral 16,1% — kritik perencanaan dan penganggaran program masih dominan; persoalan IPAL, sanitasi, dan standardisasi SPPG belum terselesaikan dan menjadi titik rentan narasi.
-4. Andrie Yunus: positif 57,4%/negatif 31,7%/netral 10,9% — momentum persidangan terbuka menjadi ujian transparansi dan independensi hukum militer.
-5. Indonesia Gelap: positif 46,1%/negatif 27,3%/netral 26,6% — artikel opini mengkritik pelaksanaan MBG sebagai program bermasalah dalam eksekusi.
+1. Presiden: positif 40,27%/negatif 34,06%/netral 25,67% — polarisasi ketat meski liputan diplomasi Qatar positif, butuh penguatan narasi hasil konkret.
+2. Panglima TNI: positif 56,2%/negatif 17,0%/netral 26,8% — pemakaman Ryamizard Ryacudu mempertahankan citra positif institusi.
+3. MBG: positif 48,2%/negatif 35,7%/netral 16,1% — kritik tata kelola tetap tinggi meski upaya standardisasi SPPG berjalan.
+4. Andrie Yunus: positif 57,4%/negatif 31,7%/netral 10,9% — momentum persidangan terbuka diharapkan tingkatkan kepercayaan publik terhadap proses hukum.
+5. Indonesia Gelap: positif 46,1%/negatif 27,3%/netral 26,6% — opini WhatsApp menyoroti masalah perencanaan MBG.
 
-GEOINT:
-Terpantau 11 personel OPM aktif tersebar di Maybrat (2), Biak Numfor (1), Mimika (2), Intan Jaya (1), Puncak Jaya (2), Sorong (1), Yapen (1), dan Pegubin (1) dengan konsentrasi zona 1-3 wilayah operasi Kodam XVII/Cenderawasih dan XVIII/Kasuari.
+GEOINT: Satu titik OPM aktif termonitor, Zakius Sondegau di Tembagapura (Mimika, Papua Tengah), zona operasi pertambangan.
 
-PIKET:
-Satgas Tek melaporkan monitoring kapal asing via AIS di perairan Laut Natuna Utara serta indikasi spoofing sinyal navigasi; Satgas Sandi mendeteksi serangan phishing canggih terhadap pengguna aplikasi Signal di lingkungan instansi pemerintah; Satgas Medis mencatat kenaikan kasus leptospirosis di Gunungkidul dengan 6 kematian, memerlukan koordinasi cepat dengan Dinkes setempat.
+PIKET: Satgas Tek mendeteksi infiltrasi kapal asing via AIS; Satgas Sandi mencatat serangan phishing canggih terhadap pengguna Signal; Satgas Medis melaporkan lonjakan leptospirosis Gunungkidul (6 kematian).
 
 REKOMENDASI:
-- Koordinasi Kemenko Polkam RI, Kementan RI, dan Perum Bulog untuk memitigasi eskalasi aksi protes petani tebu Blora, melalui negosiasi teknis perjanjian tebu serta mengantisipasi potensi meluasnya aksi destruktif ke daerah produsen tebu dan gula lainnya yang mengalami permasalahan serupa.
-- Intensifkan pengawasan digital-fisik terhadap Johny Teddy Wakum, Vincentius Siep, dan JATAM terkait eksploitasi isu film "Pesta Babi" sebagai trigger mobilisasi aksi berbasis isu konflik agraria di Papua.
-- Akselerasi publikasi standardisasi SPPG dan audit transparan MBG untuk menekan narasi negatif dan memulihkan kepercayaan publik terhadap program strategis pemerintah.
-- Tingkatkan keamanan siber infrastruktur komunikasi pemerintah guna mengantisipasi teknik phishing Signal dan AIS spoofing yang dapat mengancam kedaulatan digital Indonesia.
-- Koordinasi Satkowil Papua–Kodam XVII/XVIII untuk mencegah konvergensi aktor OPM-aktivis struktural di zona pertambangan Mimika yang dapat mengeskalasi gangguan Kamtibmas.
+• Koordinasi Kemenko Polkam, Kementan, Bulog mitigasi eskalasi protes petani Blora melalui negosiasi teknis perjanjian tebu dan antisipasi penyebaran aksi destruktif.
+• Intensifkan pengawasan digital-fisik terhadap Johny Teddy Wakum, Vincentius Siep, JATAM terkait eksploitasi isu film "Pesta Babi" sebagai trigger mobilisasi agraria Papua.
+• Akselerasi publikasi standardisasi SPPG dan audit transparan MBG untuk menekan narasi negatif dan memulihkan kepercayaan publik.
+• Tingkatkan keamanan siber infrastruktur komunikasi pemerintah mengantisipasi teknik phishing Signal dan AIS spoofing.
+• Koordinasi Satkowil Papua–Kodam XVII/XVIII cegah konvergensi aktor OPM-aktivis struktural di zona pertambangan Mimika.
 """
 
 
@@ -346,11 +341,16 @@ def _enforce_completeness(text: str, data: dict) -> str:
 
     # ----- 3) REKOMENDASI: pastikan minimal 4 bullet -----
     has, body = has_section("REKOMENDASI")
-    # Count bullets / non-empty lines
-    bullet_lines = [ln for ln in body.split("\n") if ln.strip().startswith("-") and len(ln.strip()) > 3]
+    # Count bullets (any of •, -, *, numbered)
+    bullet_lines = [
+        ln for ln in body.split("\n")
+        if re.match(r"^\s*[•\-\*]\s+\S", ln) or re.match(r"^\s*\d+[\.\)]\s+\S", ln)
+    ]
     if not has or len(bullet_lines) < 3:
         fallback = _fallback_rekomendasi(data)
-        if has:
+        if has and not bullet_lines:
+            text = _replace_section_body(text, "REKOMENDASI", fallback)
+        elif has:
             text = _append_to_section(text, "REKOMENDASI", "\n" + fallback)
         else:
             text = text.rstrip() + "\n\nREKOMENDASI:\n" + fallback
@@ -513,8 +513,8 @@ def _fallback_rekomendasi(data: dict) -> str:
             "Lanjutkan koordinasi lintas satuan dan tingkatkan kewaspadaan operasional sesuai prioritas pimpinan."
         )
 
-    # Return sebagai bullet list dengan dash
-    return "\n".join(f"- {p}" for p in paragraphs)
+    # Return sebagai bullet list dengan bullet character
+    return "\n".join(f"• {p}" for p in paragraphs)
 
 
 # Standard section labels (urutan WAJIB)
@@ -622,7 +622,7 @@ def _sanitize_output(text: str) -> str:
 
         bullets = [b for b in bullets if b]
         if bullets:
-            new_body = "\n" + "\n".join(f"- {b}" for b in bullets) + "\n"
+            new_body = "\n" + "\n".join(f"• {b}" for b in bullets) + "\n"
         else:
             new_body = "\n"
         text = before + new_body + tail
