@@ -11,60 +11,67 @@ logger = logging.getLogger("bais.ai")
 
 SYSTEM_PROMPT = (
     "Anda adalah analis intelijen strategis senior BAIS TNI. "
-    "Tugas Anda menyusun EXECUTIVE SUMMARY harian yang ringkas, padat, dan langsung-pakai untuk pimpinan, "
+    "Tugas Anda menyusun EXECUTIVE SUMMARY harian yang ringkas, padat, langsung-pakai, dan ANALITIS untuk pimpinan, "
     "dari laporan tim LID, KONTRA, GAL, MEDMON, GEOINT, dan PIKET. "
     "Output WAJIB dalam Bahasa Indonesia formal gaya laporan intelijen militer. "
-    "Anda HARUS mengikuti template format yang diberikan secara PERSIS — sama persis label, urutan, tanda baca, "
-    "dan struktur baris. JANGAN tambah heading bergaya markdown (##, **, dst). "
-    "JANGAN tambah penomoran/bullet di luar yang sudah ditentukan. "
-    "Tidak ada spekulasi; hanya fakta dari data yang diberikan. Hindari kata pengisi."
+    "JANGAN copy kalimat dari contoh yang diberikan—pelajari STRUKTUR dan GAYA-nya saja, "
+    "lalu ISI dengan analisa berdasarkan data nyata hari ini. "
+    "JANGAN sertakan placeholder seperti 'ringkasan 1 kalimat', 'Paragraf N — ...', 'X%/Y%/Z%', "
+    "atau text instruksi apapun dalam output. SEMUA harus berupa kalimat analisa lengkap. "
+    "JANGAN gunakan markdown (#, **, _, *). "
+    "Pada bagian REKOMENDASI: tulis daftar bullet dengan awalan tanda '-' (dash), "
+    "setiap rekomendasi 1-2 kalimat action-oriented. "
+    "Pada bagian MEDMON: setiap subjek di baris terpisah dengan format "
+    "'1. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — analisa konkret berdasarkan berita/data subjek tersebut.' "
+    "Pada bagian PIKET: jelaskan SECARA SPESIFIK isi laporan tiap satgas yang lapor (jangan placeholder '...'). "
+    "RINGKASAN EKSEKUTIF wajib panjang 4-6 kalimat analitis yang merangkum tema utama lintas tim."
 )
 
 
 FORMAT_TEMPLATE_EXAMPLE = """\
 RINGKASAN EKSEKUTIF:
-Hari ini (DD/MM/YYYY) tercatat tiga titik tekanan domestik: ringkas isu utama dengan dampak strategis dalam 3-4 kalimat padat yang menjelaskan apa kejadian, apa risiko, dan apa yang harus diketahui pimpinan. Sebutkan ancaman hybrid bila ada. Berikan satu kalimat penutup yang memberi rekomendasi tinggi-level kepada pimpinan.
+Hari ini (DD/MM/YYYY) tercatat tiga titik tekanan domestik: eskalasi protes petani tebu Blora dengan aksi destruktif, polarisasi publik atas film "Pesta Babi" terkait agraria Papua, dan kontroversi MBG yang mempertahankan sentimen negatif tinggi (35,7%). Ancaman hybrid meningkat dengan terdeteksinya tiga aktor strategis Papua (dua individu kunci, satu LSM) serta serangan siber terhadap aplikasi terenkripsi Signal. GEOINT mencatat 11 titik OPM aktif tersebar di delapan kabupaten Papua, terkonsentrasi di zona operasi Kodam Cenderawasih dan Kasuari. Pimpinan perlu mewaspadai potensi konvergensi isu agraria Papua–aktivisme struktural dan kelemahan tata kelola program pemerintah sebagai pintu masuk destabilisasi narasi.
 
 1. ACEH:
-Satu paragraf 1-2 kalimat. Bila tidak ada data tulis persis: Tidak ada perkembangan signifikan terpantau periode ini.
+Tidak ada perkembangan signifikan terpantau periode ini.
 
 2. JAKARTA:
-Satu paragraf 1-2 kalimat tentang dinamika ibu kota (sentiment, demo, isu politik).
+Sentimen Presiden menunjukkan polarisasi ketat (positif 40,27%, negatif 34,06%) di tengah liputan diplomasi Qatar, memerlukan penguatan narasi capaian konkret untuk menyeimbangkan persepsi domestik.
 
 3. PAPUA:
-Satu paragraf 2-3 kalimat. Wajib sebutkan total titik OPM termonitor & wilayah penyebaran bila ada data GEOINT.
+Polemik film "Pesta Babi" berkembang dari isu agraria menjadi instrumen polarisasi oleh jaringan advokasi (JATAM, Johny Teddy Wakum, Vincentius Siep) dengan potensi eksploitasi sentimen anti-pemerintah. GEOINT mencatat 11 titik OPM aktif di Maybrat, Biak Numfor, Mimika, Intan Jaya, Puncak Jaya, Sorong, Yapen, dan Pegubin—semuanya status aktif dan terkonsentrasi di zona 1-3 operasi Cenderawasih dan Kasuari.
 
 4. INTERNASIONAL:
-Satu paragraf 1-2 kalimat. Bila tidak ada tulis persis: Tidak ada perkembangan signifikan terpantau periode ini.
+Tidak ada perkembangan signifikan terpantau periode ini.
 
 LID:
-Satu paragraf 1-2 kalimat — berita trending paling penting hari ini & dampak strategisnya.
+Aksi "Tumpah Tebu" ratusan petani Blora di PT GMM mengindikasikan kegagalan perjanjian Bulog dan eskalasi metode protes destruktif yang berpotensi menular ke daerah lain jika tidak dimitigasi segera.
 
 KONTRA:
-Satu paragraf 1-2 kalimat — TO/profiling mencolok hari ini (sebutkan nama TO bila ada), sumber, dan tipe ancaman.
+Teridentifikasi tiga TO prioritas: Johny Teddy Wakum (aktor advokasi struktural Papua-agraria), Vincentius Siep (aktivis mahasiswa Papua Jakarta berkembang jadi simpul strategis), dan JATAM (LSM jaringan advokasi tambang sejak 1995 dengan kapasitas mobilisasi lintas wilayah).
 
 GAL:
-Satu paragraf 1-2 kalimat — arahan konten galang & kategori dominan.
+Konten dominan kontra-opini difokuskan pada tiga kategori: isu sapi kurban APBN (meme, video, narasi), kontroversi film "Pesta Babi" (narasi, meme, video), dan dukungan persidangan terbuka Andrie Yunus (meme).
 
 MEDMON:
-1. Presiden: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
-2. Panglima TNI: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
-3. MBG: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
-4. Andrie Yunus: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
-5. Indonesia Gelap: positif X%/negatif Y%/netral Z% — ringkasan singkat 1 kalimat.
+1. Presiden: positif 40,27%/negatif 34,06%/netral 25,67% — pemberitaan pertemuan dengan Wakil PM Qatar mendominasi sentimen positif, namun sentimen negatif masih tinggi terkait isu domestik MBG dan kebijakan agraria.
+2. Panglima TNI: positif 56,2%/negatif 17,0%/netral 26,8% — pemakaman Jenderal (Purn) Ryamizard Ryacudu meningkatkan citra positif TNI melalui narasi penghormatan dan profesionalisme institusi.
+3. MBG: positif 48,2%/negatif 35,7%/netral 16,1% — kritik perencanaan dan penganggaran program masih dominan; persoalan IPAL, sanitasi, dan standardisasi SPPG belum terselesaikan dan menjadi titik rentan narasi.
+4. Andrie Yunus: positif 57,4%/negatif 31,7%/netral 10,9% — momentum persidangan terbuka menjadi ujian transparansi dan independensi hukum militer.
+5. Indonesia Gelap: positif 46,1%/negatif 27,3%/netral 26,6% — artikel opini mengkritik pelaksanaan MBG sebagai program bermasalah dalam eksekusi.
 
 GEOINT:
-Satu paragraf 1-2 kalimat — total titik OPM aktif, wilayah, dan zona operasi Kodam terkait.
+Terpantau 11 personel OPM aktif tersebar di Maybrat (2), Biak Numfor (1), Mimika (2), Intan Jaya (1), Puncak Jaya (2), Sorong (1), Yapen (1), dan Pegubin (1) dengan konsentrasi zona 1-3 wilayah operasi Kodam XVII/Cenderawasih dan XVIII/Kasuari.
 
 PIKET:
-Satu paragraf 1-2 kalimat — laporan ringkas Satgas Tek/Sandi/Medis bila ada.
+Satgas Tek melaporkan monitoring kapal asing via AIS di perairan Laut Natuna Utara serta indikasi spoofing sinyal navigasi; Satgas Sandi mendeteksi serangan phishing canggih terhadap pengguna aplikasi Signal di lingkungan instansi pemerintah; Satgas Medis mencatat kenaikan kasus leptospirosis di Gunungkidul dengan 6 kematian, memerlukan koordinasi cepat dengan Dinkes setempat.
 
 REKOMENDASI:
-Paragraf 1 — rekomendasi koordinasi/aksi prioritas pertama (1-2 kalimat).
-Paragraf 2 — rekomendasi kedua (1-2 kalimat).
-Paragraf 3 — rekomendasi ketiga (1-2 kalimat).
-Paragraf 4 — rekomendasi keempat bila perlu (1-2 kalimat).
-Paragraf 5 — rekomendasi kelima bila perlu (1-2 kalimat).
+- Koordinasi Kemenko Polkam RI, Kementan RI, dan Perum Bulog untuk memitigasi eskalasi aksi protes petani tebu Blora, melalui negosiasi teknis perjanjian tebu serta mengantisipasi potensi meluasnya aksi destruktif ke daerah produsen tebu dan gula lainnya yang mengalami permasalahan serupa.
+- Intensifkan pengawasan digital-fisik terhadap Johny Teddy Wakum, Vincentius Siep, dan JATAM terkait eksploitasi isu film "Pesta Babi" sebagai trigger mobilisasi aksi berbasis isu konflik agraria di Papua.
+- Akselerasi publikasi standardisasi SPPG dan audit transparan MBG untuk menekan narasi negatif dan memulihkan kepercayaan publik terhadap program strategis pemerintah.
+- Tingkatkan keamanan siber infrastruktur komunikasi pemerintah guna mengantisipasi teknik phishing Signal dan AIS spoofing yang dapat mengancam kedaulatan digital Indonesia.
+- Koordinasi Satkowil Papua–Kodam XVII/XVIII untuk mencegah konvergensi aktor OPM-aktivis struktural di zona pertambangan Mimika yang dapat mengeskalasi gangguan Kamtibmas.
 """
 
 
@@ -165,38 +172,55 @@ def _enforce_completeness(text: str, data: dict) -> str:
         body = rest[:next_m.start()] if next_m else rest
         return (True, body.strip())
 
-    # ----- 1) MEDMON: pastikan SEMUA subjek tercantum -----
+    # ----- 1) MEDMON: pastikan SEMUA subjek tercantum dengan analisa lengkap -----
     medmon_items = data.get("medmon", [])
     if medmon_items:
         has, body = has_section("MEDMON")
-        missing = []
+        # Build dict { subj_lower: analisa_string }
+        subj_data = {}
         for it in medmon_items:
             subj = (it.get("subjek") or "").strip()
-            if subj and subj.lower() not in body.lower():
-                missing.append(it)
-        if missing:
-            extra_lines = []
-            # Find starting number based on existing entries
-            existing_nums = re.findall(r"(?m)^\s*(\d+)\.\s", body)
-            start_n = (max(int(n) for n in existing_nums) + 1) if existing_nums else 1
-            for i, it in enumerate(missing):
-                subj = (it.get("subjek") or "").strip()
-                sp = it.get("sentiment_positif", 0)
-                sn = it.get("sentiment_negatif", 0)
-                snt = it.get("sentiment_netral", 0)
-                analisa = (it.get("analisa") or "").strip()
-                short = analisa[:140] + ("..." if len(analisa) > 140 else "")
-                if not short:
-                    short = "data sentimen termonitor."
-                extra_lines.append(
-                    f"{start_n + i}. {subj}: positif {sp}%/negatif {sn}%/netral {snt}% — {short}"
-                )
-            text = _append_to_section(text, "MEDMON", "\n" + "\n".join(extra_lines))
+            if not subj:
+                continue
+            analisa = (it.get("analisa") or "").strip()
+            if not analisa:
+                berita = it.get("berita") or []
+                if berita and isinstance(berita, list):
+                    first = berita[0]
+                    if isinstance(first, dict):
+                        analisa = (first.get("judul") or first.get("ringkasan") or "").strip()
+            analisa = analisa or "sentimen termonitor pada periode pelaporan."
+            subj_data[subj.lower()] = {
+                "subj": subj,
+                "sp": it.get("sentiment_positif", 0),
+                "sn": it.get("sentiment_negatif", 0),
+                "snt": it.get("sentiment_netral", 0),
+                "analisa": analisa[:400],
+            }
 
-    # ----- 2) PIKET: pastikan SEMUA satgas tercantum -----
+        # Rebuild seluruh MEDMON body untuk ensure setiap subjek lengkap & ada analisa
+        rebuilt_lines = []
+        for i, (key, d) in enumerate(subj_data.items(), start=1):
+            rebuilt_lines.append(
+                f"{i}. {d['subj']}: positif {d['sp']}%/negatif {d['sn']}%/netral {d['snt']}% — {d['analisa']}"
+            )
+
+        # Check if existing body sudah baik (ada semua subjek + ada analisa text > 30 char per line)
+        body_has_all = all(d["subj"].lower() in body.lower() for d in subj_data.values())
+        body_has_analisa = all(
+            re.search(rf"{re.escape(d['subj'])}.*?—\s*\S.{{30,}}", body, re.IGNORECASE | re.DOTALL)
+            for d in subj_data.values()
+        )
+
+        if not (body_has_all and body_has_analisa) and rebuilt_lines:
+            text = _replace_section_body(text, "MEDMON", "\n".join(rebuilt_lines))
+
+    # ----- 2) PIKET: pastikan SEMUA satgas tercantum dengan isi spesifik -----
     piket_items = data.get("piket", [])
     if piket_items:
         has, body = has_section("PIKET")
+        # Cek apakah ada placeholder "..." di body
+        has_placeholder = bool(re.search(r"Satgas\s+\w+\s*\.{2,}", body, re.IGNORECASE))
         # Group by satgas
         by_satgas: dict[str, list[str]] = {}
         for it in piket_items:
@@ -204,27 +228,31 @@ def _enforce_completeness(text: str, data: dict) -> str:
             if sg:
                 judul = (it.get("judul") or "").strip()
                 isi = (it.get("isi") or "").strip()
-                snippet = f"{judul}: {isi}" if isi else judul
-                by_satgas.setdefault(sg, []).append(snippet[:160])
+                snippet = f"{judul}: {isi}" if isi and judul else (judul or isi)
+                by_satgas.setdefault(sg, []).append(snippet[:300])
         missing_satgas = [
             sg for sg in by_satgas
             if not re.search(rf"\bsatgas\s+{re.escape(sg)}\b", body, re.IGNORECASE)
             and not re.search(rf"\b{re.escape(sg)}\b", body, re.IGNORECASE)
         ]
-        if missing_satgas:
+        if missing_satgas or has_placeholder:
+            # Replace seluruh isi PIKET dengan versi lengkap dari data
             chunks = []
-            for sg in missing_satgas:
-                items_text = "; ".join(by_satgas[sg][:2])
+            for sg, items in by_satgas.items():
+                items_text = "; ".join(items[:3])
                 chunks.append(f"Satgas {sg.title()} melaporkan {items_text}.")
-            text = _append_to_section(text, "PIKET", " " + " ".join(chunks))
+            full_piket_body = " ".join(chunks)
+            # Replace section body
+            text = _replace_section_body(text, "PIKET", full_piket_body)
 
-    # ----- 3) REKOMENDASI: pastikan minimal 4 paragraf -----
+    # ----- 3) REKOMENDASI: pastikan minimal 4 bullet -----
     has, body = has_section("REKOMENDASI")
-    if not has or not body.strip() or len([p for p in body.split("\n\n") if p.strip()]) < 2:
-        # Generate fallback rekomendasi dari data
+    # Count bullets / non-empty lines
+    bullet_lines = [ln for ln in body.split("\n") if ln.strip().startswith("-") and len(ln.strip()) > 3]
+    if not has or len(bullet_lines) < 3:
         fallback = _fallback_rekomendasi(data)
         if has:
-            text = _append_to_section(text, "REKOMENDASI", "\n\n" + fallback)
+            text = _append_to_section(text, "REKOMENDASI", "\n" + fallback)
         else:
             text = text.rstrip() + "\n\nREKOMENDASI:\n" + fallback
 
@@ -244,6 +272,21 @@ def _append_to_section(text: str, label: str, addition: str) -> str:
         insert_pos = m.end() + next_m.start()
         return text[:insert_pos].rstrip() + "\n" + addition.lstrip() + "\n\n" + text[insert_pos:]
     return text.rstrip() + "\n" + addition.lstrip()
+
+
+def _replace_section_body(text: str, label: str, new_body: str) -> str:
+    """Replace the body of a section (label:...next_label) with new_body."""
+    import re
+    pattern = re.compile(rf"(?m)^{re.escape(label)}:\s*$")
+    m = pattern.search(text)
+    if not m:
+        return text.rstrip() + f"\n\n{label}:\n{new_body.lstrip()}"
+    rest = text[m.end():]
+    next_m = re.search(r"(?m)^[A-Z0-9][A-Z0-9\.\s]*:\s*$", rest)
+    if next_m:
+        end_pos = m.end() + next_m.start()
+        return text[:m.end()] + "\n" + new_body.strip() + "\n\n" + text[end_pos:]
+    return text[:m.end()] + "\n" + new_body.strip()
 
 
 def _fallback_rekomendasi(data: dict) -> str:
@@ -307,7 +350,8 @@ def _fallback_rekomendasi(data: dict) -> str:
             "Lanjutkan koordinasi lintas satuan dan tingkatkan kewaspadaan operasional sesuai prioritas pimpinan."
         )
 
-    return "\n\n".join(paragraphs)
+    # Return sebagai bullet list dengan dash
+    return "\n".join(f"- {p}" for p in paragraphs)
 
 
 # Standard section labels (urutan WAJIB)
@@ -322,13 +366,15 @@ _LABELS = [
 def _sanitize_output(text: str) -> str:
     """Bersihkan output AI agar konsisten format baku:
     - Hapus markdown (#, **, _, ```).
+    - Hapus leakage instruksi (ATURAN WAJIB, CHECKLIST, dst).
+    - Hapus placeholder template (ringkasan singkat 1 kalimat, Paragraf N, dst).
     - Pastikan setiap label section ada di baris sendiri diakhiri ':' .
-    - Pastikan ada baris kosong sebelum setiap label (kecuali label pertama).
     - Hilangkan preamble/explanatory text di awal sebelum 'RINGKASAN EKSEKUTIF'.
+    - Normalize REKOMENDASI sebagai bullet '-'.
     """
     if not text:
         return text
-    # Skip error message blocks (output dari _generate_via_ollama saat fail)
+    # Skip error message blocks
     if text.lstrip().startswith("[AI SUMMARY ERROR"):
         return text
 
@@ -337,27 +383,88 @@ def _sanitize_output(text: str) -> str:
     # 1) Hapus code fences & bold/italic markdown & heading hashes
     text = re.sub(r"```[a-zA-Z]*\n?", "", text)
     text = text.replace("```", "")
-    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)         # **bold**
-    text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", text)  # *italic*
-    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", text)  # _italic_
-    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)  # # heading
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", text)
+    text = re.sub(r"(?<!\w)\*(?!\s)(.+?)(?<!\s)\*(?!\w)", r"\1", text)
+    text = re.sub(r"(?<!\w)_(.+?)_(?!\w)", r"\1", text)
+    text = re.sub(r"^\s*#{1,6}\s*", "", text, flags=re.MULTILINE)
 
-    # 2) Skip preamble: cari label "RINGKASAN EKSEKUTIF" sebagai SECTION HEADER
-    #    (harus all-caps & di awal baris, hindari match preamble lowercase)
+    # 2) Hapus blok instruksi yang ke-leak (ATURAN WAJIB, CHECKLIST, ===, dst)
+    #    Hapus seluruh paragraf yang diawali penanda instruksi
+    text = re.sub(r"={2,}\s*[A-Z][^=\n]*={2,}\s*\n", "", text)  # === HEADER ===
+    text = re.sub(r"(?im)^\s*ATURAN\s+WAJIB[\s\S]*?(?=^\s*RINGKASAN\s+EKSEKUTIF|^$)", "", text, count=1)
+    text = re.sub(r"(?im)^\s*CHECKLIST[^\n]*\n[\s\S]*?(?=^\s*RINGKASAN\s+EKSEKUTIF)", "", text, count=1)
+    text = re.sub(r"(?im)^\s*TEMPLATE\s+FORMAT[\s\S]*?(?=^\s*RINGKASAN\s+EKSEKUTIF)", "", text, count=1)
+
+    # 3) Skip preamble: cari label "RINGKASAN EKSEKUTIF" sebagai SECTION HEADER
     m = re.search(r"(?m)^[ \t]*RINGKASAN[ \t]+EKSEKUTIF[ \t]*:?[ \t]*$", text)
     if m:
         text = text[m.start():]
+    else:
+        # fallback: any occurrence
+        m2 = re.search(r"RINGKASAN\s+EKSEKUTIF\s*:", text, re.IGNORECASE)
+        if m2:
+            text = text[m2.start():]
 
-    # 3) Normalize label lines: setiap label canonical "LABEL:\n"
-    #    Match HANYA jika label muncul sebagai section header (di awal baris,
-    #    optional colon, optional whitespace, end of line atau diikuti newline)
+    # 4) Hapus placeholder text yang nyangkut
+    placeholders = [
+        r"—\s*ringkasan\s+singkat\s+1\s+kalimat\.?",
+        r"—\s*ringkasan\s+singkat\.?",
+        r"—\s*analisa\s+konkret[^\.]*\.?",
+        r"X,?X?%/Y,?Y?%/Z,?Z?%",
+        r"DD/MM/YYYY",
+        r"Satgas\s+Tek\s*\.{2,}\s*;?\s*",
+        r"Satgas\s+Sandi\s*\.{2,}\s*;?\s*",
+        r"Satgas\s+Medis\s*\.{2,}\s*;?\s*",
+    ]
+    for p in placeholders:
+        text = re.sub(p, "", text, flags=re.IGNORECASE)
+
+    # 5) Strip "Paragraf N — " prefix di section REKOMENDASI
+    text = re.sub(r"(?m)^\s*Paragraf\s+\d+\s*[—\-:.]?\s*", "- ", text, flags=re.IGNORECASE)
+
+    # 6) Normalize label lines: setiap label canonical "LABEL:\n"
     for label in _LABELS:
         pattern = re.compile(
             r"(?m)^[ \t]*" + re.escape(label) + r"[ \t]*:?[ \t]*$"
         )
         text = pattern.sub(f"\n{label}:", text, count=1)
 
-    # 4) Cleanup excessive blank lines & trailing whitespace
+    # 7) Pada section REKOMENDASI: pastikan setiap line jadi bullet "- "
+    rekom_match = re.search(r"(?m)^REKOMENDASI:\s*$", text)
+    if rekom_match:
+        before = text[:rekom_match.end()]
+        after = text[rekom_match.end():]
+        next_label = re.search(r"(?m)^[A-Z0-9][A-Z0-9\.\s]{1,30}:\s*$", after)
+        body = after[:next_label.start()] if next_label else after
+        tail = after[next_label.start():] if next_label else ""
+
+        # SPLIT body menjadi rekomendasi-rekomendasi individual.
+        # Pisahkan per baris dulu, kalau ada multiple kalimat dalam 1 baris,
+        # pisahkan per kalimat (titik akhir).
+        bullets = []
+        for ln in body.split("\n"):
+            ln = ln.strip()
+            if not ln:
+                continue
+            # Strip existing bullet/dash/number prefix
+            ln = re.sub(r"^[\-\*•·]\s*", "", ln)
+            ln = re.sub(r"^\d+[\.\)]\s*", "", ln)
+            # If line mengandung beberapa kalimat panjang (mis. "Koor.... Inten.... Aksel..."),
+            # split per kalimat tapi merge kalimat pendek (<30 char).
+            sentences = re.split(r"(?<=[\.\!])\s+(?=[A-Z])", ln)
+            for s in sentences:
+                s = s.strip()
+                if s and len(s) > 10:
+                    bullets.append(s)
+
+        bullets = [b for b in bullets if b]
+        if bullets:
+            new_body = "\n" + "\n".join(f"- {b}" for b in bullets) + "\n"
+        else:
+            new_body = "\n"
+        text = before + new_body + tail
+
+    # 8) Cleanup excessive blank lines & trailing whitespace
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
     text = "\n".join(line.rstrip() for line in text.split("\n"))
 
@@ -366,59 +473,38 @@ def _sanitize_output(text: str) -> str:
 
 def _build_user_prompt(data: dict) -> str:
     """Build the prompt text. Shared between providers."""
-    # Pre-compute checklist hints to force AI completeness
     medmon_subjects = [it.get("subjek", "").strip() for it in data.get("medmon", []) if it.get("subjek")]
     piket_satgas = sorted(set([(it.get("satgas") or "").upper().strip() for it in data.get("piket", []) if it.get("satgas")]))
     kontra_names = [it.get("nama_to", "").strip() for it in data.get("kontra", []) if it.get("nama_to")]
     geoint_total = len(data.get("geoint", []))
     geoint_aktif = sum(1 for it in data.get("geoint", []) if str(it.get("status", "")).lower() == "aktif")
-    lid_count = len(data.get("lid", []))
-    gal_count = len(data.get("gal", []))
 
-    checklist = "=== CHECKLIST WAJIB DICANTUMKAN ===\n"
-    checklist += f"- MEDMON: WAJIB sebutkan {len(medmon_subjects)} subjek SEMUA dengan sentimen %: "
-    checklist += ", ".join(medmon_subjects) if medmon_subjects else "(tidak ada data)"
-    checklist += "\n"
-    checklist += f"- PIKET: WAJIB sebutkan SETIAP Satgas yang lapor ({len(piket_satgas)}): "
-    checklist += ", ".join(piket_satgas) if piket_satgas else "(tidak ada data)"
-    checklist += "\n"
-    checklist += f"- KONTRA: WAJIB sebutkan nama TO ({len(kontra_names)}): "
-    checklist += ", ".join(kontra_names) if kontra_names else "(tidak ada data)"
-    checklist += "\n"
-    checklist += f"- GEOINT: WAJIB sebutkan total {geoint_total} titik OPM (aktif {geoint_aktif})\n"
-    checklist += f"- LID: {lid_count} berita | GAL: {gal_count} konten\n"
-    checklist += "- REKOMENDASI: WAJIB minimal 4 PARAGRAF terpisah, masing-masing actionable.\n\n"
+    checklist_lines = []
+    if medmon_subjects:
+        checklist_lines.append(f"- MEDMON wajib mencakup {len(medmon_subjects)} subjek: {', '.join(medmon_subjects)}")
+    if piket_satgas:
+        checklist_lines.append(f"- PIKET wajib menyebut tiap satgas yang lapor: {', '.join(piket_satgas)}")
+    if kontra_names:
+        checklist_lines.append(f"- KONTRA wajib menyebut nama TO: {', '.join(kontra_names)}")
+    if geoint_total:
+        checklist_lines.append(f"- GEOINT wajib menyebut total {geoint_total} titik OPM (aktif {geoint_aktif}) dan distribusi wilayah")
+    checklist = "\n".join(checklist_lines) if checklist_lines else "(tidak ada data tim hari ini)"
 
     return (
-        "Susun EXECUTIVE SUMMARY harian untuk pimpinan BAIS TNI dengan mengikuti TEMPLATE FORMAT BAKU di bawah ini.\n\n"
-        "=== ATURAN WAJIB ===\n"
-        "1. Ikuti STRUKTUR, LABEL, dan URUTAN template PERSIS sama. JANGAN tambah/kurangi label.\n"
-        "2. Setiap label (RINGKASAN EKSEKUTIF, 1. ACEH, 2. JAKARTA, 3. PAPUA, 4. INTERNASIONAL, "
-        "LID, KONTRA, GAL, MEDMON, GEOINT, PIKET, REKOMENDASI) WAJIB ditulis di baris sendiri, "
-        "diakhiri dengan tanda titik dua ':' .\n"
-        "3. Isi konten dimulai pada baris BERIKUTNYA setelah label.\n"
-        "4. JANGAN gunakan markdown (#, **, _, *, -). JANGAN bold/italic.\n"
-        "5. Pada bagian MEDMON: WAJIB cantumkan SEMUA subjek tanpa kecuali (lihat checklist di bawah). "
-        "Format: 'N. Nama: positif X,X%/negatif Y,Y%/netral Z,Z% — ringkasan 1 kalimat.'\n"
-        "6. Pada bagian PIKET: WAJIB cantumkan SEMUA satgas yang melapor (Tek/Sandi/Medis), bukan hanya satu. "
-        "Format: 'Satgas Tek ...; Satgas Sandi ...; Satgas Medis ...' atau paragraf yang menyebut tiap satgas.\n"
-        "7. Pada bagian KONTRA: WAJIB cantumkan SEMUA nama TO yang ada di data.\n"
-        "8. Pada bagian REKOMENDASI: WAJIB MINIMAL 4 paragraf terpisah, masing-masing 1-2 kalimat, "
-        "action-oriented (verb di depan: 'Koordinasi...', 'Intensifkan...', 'Akselerasi...', 'Tingkatkan...'). "
-        "Bukan bullet, bukan nomor — paragraf biasa dipisah baris kosong.\n"
-        "9. Bila bagian COG (ACEH/JAKARTA/PAPUA/INTERNASIONAL) tidak ada data, tulis PERSIS: "
-        "'Tidak ada perkembangan signifikan terpantau periode ini.'\n"
-        "10. Output hanya teks bersih (plain text) — tidak ada penjelasan/komentar tambahan di luar format.\n"
-        "11. Target panjang: 500-800 kata. JANGAN potong di tengah section.\n"
-        "12. Bahasa Indonesia formal gaya laporan intelijen militer dengan analisa mendalam (bukan sekedar restate data).\n\n"
-        + checklist +
-        "=== TEMPLATE FORMAT BAKU ===\n"
+        "Tugas Anda: Tulis EXECUTIVE SUMMARY harian BAIS TNI berdasarkan DATA HARI INI di bawah. "
+        "Pelajari CONTOH OUTPUT di bawah dan tiru STRUKTUR, GAYA BAHASA, dan KEDALAMAN ANALISA-nya. "
+        "Ganti setiap kalimat dalam contoh dengan kalimat baru berdasarkan DATA HARI INI yang sebenarnya. "
+        "JANGAN copy kalimat dari contoh secara harfiah—gunakan hanya sebagai panduan format.\n\n"
+        "=== CONTOH OUTPUT BAGUS (gunakan ini sebagai panduan format & gaya saja) ===\n"
         + FORMAT_TEMPLATE_EXAMPLE +
-        "\n=== DATA HARI INI ===\n"
+        "\n=== CHECKLIST KELENGKAPAN UNTUK HARI INI ===\n"
+        + checklist +
+        "\n\n=== DATA HARI INI ===\n"
         + _format_payload(data) +
-        "\n\nSekarang tulis EXECUTIVE SUMMARY LENGKAP mengikuti template & checklist di atas. "
-        "Pastikan SEMUA item di checklist ter-cover. Mulai langsung dari 'RINGKASAN EKSEKUTIF:' tanpa preamble. "
-        "JANGAN BERHENTI sebelum REKOMENDASI berisi minimal 4 paragraf."
+        "\n\n"
+        "Sekarang tulis EXECUTIVE SUMMARY untuk DATA HARI INI di atas. "
+        "Mulai langsung dengan 'RINGKASAN EKSEKUTIF:' di baris pertama. "
+        "Output hanya teks bersih tanpa markdown, tanpa preamble, tanpa penjelasan tambahan."
     )
 
 
