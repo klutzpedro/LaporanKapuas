@@ -702,7 +702,7 @@ def _get_logo():
 
 
 # ---------- HEADER / FOOTER ----------
-def _draw_header(c, report_date):
+def _draw_header(c, report_date, title_override=None, subtitle_override=None):
     c.setFillColor(COLOR_HEADER)
     c.rect(0, PAGE_H - 18 * mm, PAGE_W, 18 * mm, stroke=0, fill=1)
     c.setFillColor(COLOR_AMBER)
@@ -720,9 +720,9 @@ def _draw_header(c, report_date):
             pass
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(text_x, PAGE_H - 9 * mm, "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
+    c.drawString(text_x, PAGE_H - 9 * mm, title_override or "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
     c.setFont("Helvetica", 7)
-    c.drawString(text_x, PAGE_H - 13.5 * mm, "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
+    c.drawString(text_x, PAGE_H - 13.5 * mm, subtitle_override or "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
     c.setFont("Helvetica-Bold", 9)
     c.setFillColor(COLOR_AMBER)
     c.drawRightString(PAGE_W - MARGIN, PAGE_H - 9 * mm, f"Tanggal: {report_date}")
@@ -2263,11 +2263,16 @@ def _draw_piket_card(c, x, y_top, w, item):
 
 
 # ---------- MAIN ----------
-def build_summary_pdf(data, ai_text, ai_html=None):
+def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_subtitle=None, skip_piket=False):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     rd = data.get("report_date", "")
     state = {"page": 1, "y": 0}
+
+    # If skip_piket: clear piket data so PIKET section renders empty/skipped
+    if skip_piket:
+        data = dict(data)
+        data["piket"] = []
 
     avail_top = PAGE_H - 18 * mm - 4 * mm
     avail_bottom = 13 * mm
@@ -2277,7 +2282,7 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         _draw_footer(c, state["page"])
         c.showPage()
         state["page"] += 1
-        _draw_header(c, rd)
+        _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle)
         state["y"] = avail_top
 
     def ensure_space(needed):
@@ -2309,7 +2314,7 @@ def build_summary_pdf(data, ai_text, ai_html=None):
         section_title(title, count_text)
 
     # =========== PAGE 1: Executive Summary (FULL PAGE) ===========
-    _draw_header(c, rd)
+    _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle)
     sum_top = avail_top
     sum_bottom = avail_bottom
     sum_h = sum_top - sum_bottom

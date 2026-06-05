@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import {
   House, Newspaper, UserFocus, Megaphone,
   ChartLineUp, Crosshair, ClipboardText, FilePdf, SignOut, Users, Archive,
-  MagnifyingGlass,
+  MagnifyingGlass, Sun,
   CaretLeft, CaretRight,
 } from "@phosphor-icons/react";
 import { ROLE_LABEL } from "@/lib/api";
@@ -81,6 +81,7 @@ export default function Sidebar() {
             <SideLink to="/summary" icon={FilePdf} label="Summary & PDF" testid="nav-summary" collapsed={collapsed} />
             <SideLink to="/history" icon={Archive} label="Arsip Laporan" testid="nav-history" collapsed={collapsed} />
             <SideLink to="/search" icon={MagnifyingGlass} label="Cari Laporan" testid="nav-search" collapsed={collapsed} />
+            <SideLink to="/morning" icon={Sun} label="Laporan Pagi" testid="nav-morning" collapsed={collapsed} />
           </>
         )}
         {user?.role !== "admin" && user?.role !== "piket" && user && (

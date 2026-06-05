@@ -6,6 +6,7 @@ ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 import os
+import asyncio
 import logging
 import secrets
 from datetime import datetime, timezone, timedelta, time as dtime, date as ddate
@@ -1185,6 +1186,192 @@ async def reports_delete(rid: str, _user: dict = Depends(require_role("admin")))
     return {"ok": True}
 
 
+# ===================== MORNING REPORT (Laporan Pagi) =====================
+# Auto-generated daily at 07:00 WIB from YESTERDAY's team data.
+# Title: "Laporan Geospasika Periode Tanggal <today>"
+# Content: Executive Summary + LID + KONTRA + GAL + MEDMON + GEOINT (no PIKET).
+
+def _morning_title_for_date(rd: str) -> str:
+    """Format title: 'LAPORAN GEOSPASIKA PERIODE 04 JUN 2026'."""
+    try:
+        d = datetime.fromisoformat(rd).date()
+        bulan = ["JAN", "FEB", "MAR", "APR", "MEI", "JUN",
+                 "JUL", "AGU", "SEP", "OKT", "NOV", "DES"]
+        return f"LAPORAN GEOSPASIKA PERIODE {d.day:02d} {bulan[d.month-1]} {d.year}"
+    except Exception:
+        return f"LAPORAN GEOSPASIKA PERIODE {rd}"
+
+
+async def _build_morning_pdf_for(today_str: str, generated_by: str = "system") -> bytes:
+    """Generate the morning PDF for `today_str` using YESTERDAY's data.
+    Stores result in db.morning_reports (one doc per today_str).
+    Returns the pdf bytes.
+    """
+    from datetime import date as _date, timedelta as _td
+    try:
+        today_d = _date.fromisoformat(today_str)
+    except Exception:
+        today_d = datetime.now(WIB).date()
+    yesterday_str = (today_d - _td(days=1)).isoformat()
+
+    # Collect YESTERDAY's data
+    data = await collect_daily_data(yesterday_str)
+    data["medmon_trend"] = await collect_medmon_7day_trend(yesterday_str)
+    # IMPORTANT: report_date in the PDF header should show today's morning date
+    data["report_date"] = today_str
+
+    # AI summary: reuse yesterday's saved summary if exists, else generate fresh
+    ai_doc = await db.ai_summaries.find_one({"report_date": yesterday_str})
+    ai_text = ai_doc.get("text") if ai_doc else None
+    ai_html = ai_doc.get("html") if ai_doc else None
+    if not ai_text and not ai_html:
+        try:
+            from ai_summary import generate_ai_summary
+            ai_text = await generate_ai_summary(data)
+        except Exception as e:
+            logger.warning(f"Morning AI gen failed: {e}")
+            ai_text = ""
+
+    # Strip PIKET section from AI text if present (since morning report has no PIKET)
+    if ai_text:
+        import re
+        ai_text = re.sub(r"(?ms)^\s*PIKET\s*:\s*$.*?(?=^\s*REKOMENDASI\s*:|\Z)", "", ai_text)
+
+    title = _morning_title_for_date(today_str)
+    pdf_bytes = await run_in_threadpool(
+        build_summary_pdf, data, ai_text,
+        ai_html=ai_html,
+        header_title=title,
+        header_subtitle="Satgas Kapuas  ·  Laporan Pagi  ·  Klasifikasi: TERBATAS",
+        skip_piket=True,
+    )
+
+    filename = f"Laporan_Pagi_Geospasika_{today_str}.pdf"
+    import base64 as _b64
+    counts = {k: len(data.get(k, [])) for k in ["lid", "kontra", "gal", "medmon", "geoint"]}
+    await db.morning_reports.replace_one(
+        {"report_date": today_str},
+        {
+            "report_date": today_str,
+            "source_date": yesterday_str,
+            "generated_at": datetime.now(timezone.utc).isoformat(),
+            "generated_by": generated_by,
+            "filename": filename,
+            "size_bytes": len(pdf_bytes),
+            "pdf_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
+            "counts": counts,
+            "has_ai_summary": bool(ai_text),
+            "title": title,
+        },
+        upsert=True,
+    )
+    logger.info(f"Morning PDF generated: {filename} ({len(pdf_bytes)} bytes)")
+    return pdf_bytes
+
+
+@api.post("/morning-reports/generate")
+async def morning_generate(
+    report_date: Optional[str] = None,
+    user: dict = Depends(require_role("admin", "piket")),
+):
+    """Manually trigger morning report generation for a specific date (default: today WIB)."""
+    today_str = report_date or datetime.now(WIB).date().isoformat()
+    pdf_bytes = await _build_morning_pdf_for(today_str, generated_by=user.get("id", "manual"))
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Laporan_Pagi_{today_str}.pdf"'},
+    )
+
+
+@api.get("/morning-reports/history")
+async def morning_history(
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 100,
+    _user: dict = Depends(require_role("admin", "piket")),
+):
+    q = {}
+    if start_date or end_date:
+        q["report_date"] = {}
+        if start_date:
+            q["report_date"]["$gte"] = start_date
+        if end_date:
+            q["report_date"]["$lte"] = end_date
+    cur = db.morning_reports.find(q, {"pdf_base64": 0}).sort("report_date", -1).limit(min(limit, 500))
+    out = []
+    async for d in cur:
+        d["id"] = str(d["_id"])
+        del d["_id"]
+        out.append(d)
+    return out
+
+
+@api.get("/morning-reports/{rid}/download")
+async def morning_download(rid: str, _user: dict = Depends(require_role("admin", "piket"))):
+    import base64 as _b64
+    doc = await db.morning_reports.find_one({"_id": _safe_objid(rid)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
+    pdf_bytes = _b64.b64decode(doc["pdf_base64"])
+    filename = doc.get("filename") or f"Laporan_Pagi_{doc.get('report_date','')}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@api.delete("/morning-reports/{rid}")
+async def morning_delete(rid: str, _user: dict = Depends(require_role("admin"))):
+    res = await db.morning_reports.delete_one({"_id": _safe_objid(rid)})
+    if res.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
+    return {"ok": True}
+
+
+# ----- SCHEDULER: 07:00 WIB daily auto-generate -----
+MORNING_HOUR_WIB = int(os.environ.get("MORNING_HOUR_WIB", "7"))
+MORNING_MIN_WIB = int(os.environ.get("MORNING_MIN_WIB", "0"))
+
+
+async def _morning_scheduler_loop():
+    """Background task that wakes up daily at MORNING_HOUR_WIB:MORNING_MIN_WIB to
+    generate the morning report for TODAY using YESTERDAY's data.
+    """
+    while True:
+        try:
+            now = datetime.now(WIB)
+            target = now.replace(hour=MORNING_HOUR_WIB, minute=MORNING_MIN_WIB, second=0, microsecond=0)
+            if target <= now:
+                # Already past today's slot → schedule for tomorrow
+                from datetime import timedelta as _td
+                target = target + _td(days=1)
+            sleep_seconds = (target - now).total_seconds()
+            logger.info(f"Morning scheduler: next run at {target.isoformat()} (in {sleep_seconds:.0f}s)")
+            await asyncio.sleep(sleep_seconds)
+
+            # Run generation for today
+            today_str = datetime.now(WIB).date().isoformat()
+            try:
+                # Idempotent: if doc already exists for today_str, skip
+                existing = await db.morning_reports.find_one({"report_date": today_str})
+                if existing:
+                    logger.info(f"Morning report for {today_str} already exists, skip auto-gen.")
+                else:
+                    logger.info(f"Auto-generating morning report for {today_str}...")
+                    await _build_morning_pdf_for(today_str, generated_by="scheduler-07wib")
+                    logger.info(f"Morning report auto-generated for {today_str}.")
+            except Exception as e:
+                logger.exception(f"Morning scheduler failed for {today_str}: {e}")
+        except asyncio.CancelledError:
+            logger.info("Morning scheduler cancelled.")
+            break
+        except Exception as e:
+            logger.exception(f"Morning scheduler loop error: {e}")
+            await asyncio.sleep(60)
+
+
 # ===================== STARTUP / SEEDING =====================
 @app.on_event("startup")
 async def startup():
@@ -1254,14 +1441,30 @@ async def startup():
         await db.generated_reports.create_index("report_date", unique=True)
         await db.ai_summaries.create_index("report_date", unique=True)
         await db.gal_stats_reports.create_index("report_date", unique=True)
+        await db.morning_reports.create_index("report_date", unique=True)
         await db.users.create_index("email", unique=True)
         logger.info("Indexes ensured for high-concurrency reads.")
     except Exception as e:
         logger.warning(f"Index creation skipped: {e}")
 
+    # Start morning scheduler (auto-gen at 07:00 WIB)
+    try:
+        app.state.morning_scheduler_task = asyncio.create_task(_morning_scheduler_loop())
+        logger.info("Morning scheduler task started.")
+    except Exception as e:
+        logger.warning(f"Morning scheduler start failed: {e}")
+
 
 @app.on_event("shutdown")
 async def shutdown():
+    # Cancel scheduler if running
+    task = getattr(app.state, "morning_scheduler_task", None)
+    if task:
+        task.cancel()
+        try:
+            await task
+        except (asyncio.CancelledError, Exception):
+            pass
     client.close()
 
 
