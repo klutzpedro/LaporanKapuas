@@ -918,7 +918,7 @@ def _draw_header(c, report_date, title_override=None, subtitle_override=None, va
 
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 12)
-    c.drawString(text_x, PAGE_H - 9 * mm, title_override or "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
+    c.drawString(text_x, PAGE_H - 9 * mm, title_override or "BAIS TNI · SUMMARY SATGAS KAPUAS HARIAN")
     c.setFont("Helvetica", 7)
     c.drawString(text_x, PAGE_H - 13.5 * mm, subtitle_override or "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
     c.setFont("Helvetica-Bold", 9)
