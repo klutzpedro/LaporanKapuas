@@ -702,10 +702,206 @@ def _get_logo():
 
 
 # ---------- HEADER / FOOTER ----------
+def _draw_morning_cover_page(c, report_date, title_text=None):
+    """Cyber-themed cover page for Laporan Pagi.
+    - Dark navy/cyan background with grid pattern
+    - Glowing neon title 'LAPORAN PAGI GEOSPASIKA'
+    - Period subtitle: 'PERIODE DD MMM YYYY'
+    - Corner brackets, scan lines, classification stamp
+    """
+    # Colors
+    BG_DARK = HexColor("#020617")           # Slate-950 (almost black)
+    NEON_CYAN = HexColor("#22D3EE")         # Cyan-400
+    NEON_TEAL = HexColor("#2DD4BF")         # Teal-400
+    NEON_AMBER = HexColor("#FBBF24")        # Amber-400
+    GRID_GLOW = HexColor("#134E4A")         # Teal-900 (subtle grid lines)
+
+    # 1) Full-page dark background
+    c.setFillColor(BG_DARK)
+    c.rect(0, 0, PAGE_W, PAGE_H, stroke=0, fill=1)
+
+    # 2) Subtle vertical gradient effect (multiple thin rectangles)
+    for i in range(20):
+        ratio = i / 20.0
+        # Blend BG_DARK → BG_DARK2 going up
+        r = 0x02 + int((0x0B - 0x02) * ratio)
+        g = 0x06 + int((0x15 - 0x06) * ratio)
+        b = 0x17 + int((0x30 - 0x17) * ratio)
+        c.setFillColor(HexColor(f"#{r:02x}{g:02x}{b:02x}"))
+        band_h = PAGE_H / 20
+        c.rect(0, i * band_h, PAGE_W, band_h, stroke=0, fill=1)
+
+    # 3) Grid pattern (subtle cyber grid)
+    c.setStrokeColor(GRID_GLOW)
+    c.setLineWidth(0.2)
+    grid_step = 10 * mm
+    # vertical lines
+    x = 0
+    while x <= PAGE_W:
+        c.line(x, 0, x, PAGE_H)
+        x += grid_step
+    # horizontal lines
+    y = 0
+    while y <= PAGE_H:
+        c.line(0, y, PAGE_W, y)
+        y += grid_step
+
+    # 4) Major accent grid lines (every 50mm)
+    c.setStrokeColor(HexColor("#1E293B"))
+    c.setLineWidth(0.4)
+    for x in range(0, int(PAGE_W), int(50 * mm)):
+        c.line(x, 0, x, PAGE_H)
+    for y in range(0, int(PAGE_H), int(50 * mm)):
+        c.line(0, y, PAGE_W, y)
+
+    # 5) Corner brackets (cyber-style frame)
+    bracket_len = 18 * mm
+    bracket_off = 12 * mm
+    c.setStrokeColor(NEON_CYAN)
+    c.setLineWidth(1.8)
+    # Top-left
+    c.line(bracket_off, PAGE_H - bracket_off, bracket_off + bracket_len, PAGE_H - bracket_off)
+    c.line(bracket_off, PAGE_H - bracket_off, bracket_off, PAGE_H - bracket_off - bracket_len)
+    # Top-right
+    c.line(PAGE_W - bracket_off, PAGE_H - bracket_off, PAGE_W - bracket_off - bracket_len, PAGE_H - bracket_off)
+    c.line(PAGE_W - bracket_off, PAGE_H - bracket_off, PAGE_W - bracket_off, PAGE_H - bracket_off - bracket_len)
+    # Bottom-left
+    c.line(bracket_off, bracket_off, bracket_off + bracket_len, bracket_off)
+    c.line(bracket_off, bracket_off, bracket_off, bracket_off + bracket_len)
+    # Bottom-right
+    c.line(PAGE_W - bracket_off, bracket_off, PAGE_W - bracket_off - bracket_len, bracket_off)
+    c.line(PAGE_W - bracket_off, bracket_off, PAGE_W - bracket_off, bracket_off + bracket_len)
+
+    # 6) Top label strip: classification + timestamp
+    c.setFillColor(NEON_AMBER)
+    c.setFont("Courier-Bold", 8)
+    c.drawString(bracket_off + 4 * mm, PAGE_H - bracket_off - 8 * mm, "[ CLASSIFIED · TERBATAS ]")
+    c.setFillColor(HexColor("#94A3B8"))
+    c.setFont("Courier", 7)
+    c.drawRightString(PAGE_W - bracket_off - 4 * mm, PAGE_H - bracket_off - 8 * mm,
+                      f">> {datetime.now().strftime('%Y.%m.%d %H:%M:%S')} WIB")
+
+    # 7) Centered title block
+    center_y = PAGE_H / 2 + 30 * mm
+
+    # Small label above main title
+    c.setFillColor(NEON_TEAL)
+    c.setFont("Courier-Bold", 11)
+    label = "BADAN INTELIJEN STRATEGIS · TNI"
+    label_w = stringWidth(label, "Courier-Bold", 11)
+    c.drawString((PAGE_W - label_w) / 2, center_y + 18 * mm, label)
+
+    # Underline of small label (cyber tick marks)
+    c.setStrokeColor(NEON_TEAL)
+    c.setLineWidth(0.5)
+    tick_y = center_y + 15 * mm
+    line_w = label_w + 20 * mm
+    line_x = (PAGE_W - line_w) / 2
+    c.line(line_x, tick_y, line_x + line_w, tick_y)
+    # Tick marks at endpoints
+    c.line(line_x, tick_y - 1.5 * mm, line_x, tick_y + 1.5 * mm)
+    c.line(line_x + line_w, tick_y - 1.5 * mm, line_x + line_w, tick_y + 1.5 * mm)
+
+    # Main title — big bold
+    main = "LAPORAN PAGI"
+    c.setFont("Helvetica-Bold", 46)
+    main_w = stringWidth(main, "Helvetica-Bold", 46)
+    # Glow effect: draw outline in cyan slightly offset
+    c.setFillColor(NEON_CYAN)
+    c.setFont("Helvetica-Bold", 46)
+    c.drawString((PAGE_W - main_w) / 2 + 1, center_y - 1, main)  # slight cyan shadow
+    c.setFillColor(white)
+    c.drawString((PAGE_W - main_w) / 2, center_y, main)
+
+    # Sub title — GEOSPASIKA
+    sub = "GEOSPASIKA"
+    c.setFont("Helvetica-Bold", 40)
+    sub_w = stringWidth(sub, "Helvetica-Bold", 40)
+    c.setFillColor(NEON_TEAL)
+    c.drawString((PAGE_W - sub_w) / 2 + 1, center_y - 14 * mm - 1, sub)  # teal glow
+    c.setFillColor(white)
+    c.drawString((PAGE_W - sub_w) / 2, center_y - 14 * mm, sub)
+
+    # Decorative separator
+    sep_y = center_y - 22 * mm
+    c.setStrokeColor(NEON_AMBER)
+    c.setLineWidth(0.8)
+    sep_w = 80 * mm
+    sep_x = (PAGE_W - sep_w) / 2
+    c.line(sep_x, sep_y, sep_x + sep_w, sep_y)
+    # Diamond at center
+    cx = PAGE_W / 2
+    c.setFillColor(NEON_AMBER)
+    c.setStrokeColor(NEON_AMBER)
+    c.setLineWidth(1)
+    diamond_size = 2 * mm
+    p = c.beginPath()
+    p.moveTo(cx, sep_y + diamond_size)
+    p.lineTo(cx + diamond_size, sep_y)
+    p.lineTo(cx, sep_y - diamond_size)
+    p.lineTo(cx - diamond_size, sep_y)
+    p.close()
+    c.drawPath(p, stroke=0, fill=1)
+
+    # Period
+    period_text = title_text or f"PERIODE {report_date}"
+    # Try to format: "LAPORAN GEOSPASIKA PERIODE 05 JUN 2026" -> "PERIODE 05 JUN 2026"
+    if title_text and "PERIODE" in title_text.upper():
+        idx = title_text.upper().find("PERIODE")
+        period_text = title_text[idx:]
+    c.setFont("Helvetica-Bold", 16)
+    pw = stringWidth(period_text, "Helvetica-Bold", 16)
+    c.setFillColor(HexColor("#E2E8F0"))
+    c.drawString((PAGE_W - pw) / 2, sep_y - 12 * mm, period_text)
+
+    # 8) Bottom info block — "Generated by automated intel pipeline" + version
+    bottom_y = bracket_off + 24 * mm
+    c.setStrokeColor(HexColor("#334155"))
+    c.setLineWidth(0.4)
+    c.line(MARGIN * 2, bottom_y + 6 * mm, PAGE_W - MARGIN * 2, bottom_y + 6 * mm)
+
+    c.setFillColor(NEON_CYAN)
+    c.setFont("Courier-Bold", 8)
+    c.drawCentredString(PAGE_W / 2, bottom_y + 1 * mm, ">>> SATGAS KAPUAS · INTEL AUTOMATED PIPELINE <<<")
+
+    c.setFillColor(HexColor("#64748B"))
+    c.setFont("Courier", 7)
+    c.drawCentredString(PAGE_W / 2, bottom_y - 4 * mm,
+                        "Auto-generated daily at 07:00 WIB · Source: D-1 team reports")
+
+    # 9) Faux IP-like badge bottom-left
+    c.setFillColor(HexColor("#0F172A"))
+    c.setStrokeColor(NEON_TEAL)
+    c.setLineWidth(0.6)
+    badge_w, badge_h = 36 * mm, 10 * mm
+    bx = bracket_off + 4 * mm
+    by = bracket_off + 4 * mm
+    c.rect(bx, by, badge_w, badge_h, stroke=1, fill=1)
+    c.setFillColor(NEON_TEAL)
+    c.setFont("Courier-Bold", 6)
+    c.drawString(bx + 2 * mm, by + 6 * mm, "DOC.ID:")
+    c.setFillColor(white)
+    c.setFont("Courier", 7)
+    doc_id = f"BAIS-MOR-{report_date.replace('-', '')}"
+    c.drawString(bx + 2 * mm, by + 1.5 * mm, doc_id)
+
+    # 10) Status badge bottom-right
+    sbx = PAGE_W - bracket_off - 4 * mm - badge_w
+    c.setFillColor(HexColor("#0F172A"))
+    c.setStrokeColor(NEON_AMBER)
+    c.rect(sbx, by, badge_w, badge_h, stroke=1, fill=1)
+    c.setFillColor(NEON_AMBER)
+    c.setFont("Courier-Bold", 6)
+    c.drawString(sbx + 2 * mm, by + 6 * mm, "STATUS:")
+    c.setFillColor(white)
+    c.setFont("Courier", 7)
+    c.drawString(sbx + 2 * mm, by + 1.5 * mm, "ACTIVE · SYNCED")
+
+
 def _draw_header(c, report_date, title_override=None, subtitle_override=None, variant="default"):
     # Morning variant: teal/cyan palette instead of dark+amber
     if variant == "morning":
-        bg = HexColor("#0F766E")       # Teal-700 (deeper than 600 for prominence)
+        bg = HexColor("#0F766E")       # Teal-700
         accent_bar = HexColor("#FBBF24")  # Amber-400 (sunrise feel)
         tag_color = HexColor("#FEF3C7")   # Cream highlight
     else:
@@ -728,12 +924,6 @@ def _draw_header(c, report_date, title_override=None, subtitle_override=None, va
             text_x = MARGIN + 5 * mm + logo_size + 2 * mm
         except Exception:
             pass
-
-    # Morning variant: tambahkan badge "LAPORAN PAGI" prominent
-    if variant == "morning":
-        # Sunrise icon (orange circle as sun) di kanan judul
-        c.setFillColor(HexColor("#FCD34D"))
-        c.circle(text_x + 100, PAGE_H - 11 * mm, 2.2 * mm, stroke=0, fill=1)
 
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 12)
@@ -2332,6 +2522,12 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
         if state["y"] - min_needed < avail_bottom:
             new_page()
         section_title(title, count_text)
+
+    # =========== COVER PAGE (Morning variant only) ===========
+    if variant == "morning":
+        _draw_morning_cover_page(c, rd, title_text=header_title)
+        c.showPage()
+        state["page"] = 2  # next page after cover
 
     # =========== PAGE 1: Executive Summary (FULL PAGE) ===========
     _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant=variant)
