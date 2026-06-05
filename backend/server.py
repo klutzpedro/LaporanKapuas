@@ -1202,9 +1202,15 @@ def _morning_title_for_date(rd: str) -> str:
         return f"LAPORAN GEOSPASIKA PERIODE {rd}"
 
 
-async def _build_morning_pdf_for(today_str: str, generated_by: str = "system") -> bytes:
+async def _build_morning_pdf_for(
+    today_str: str,
+    generated_by: str = "system",
+    ai_text_override: Optional[str] = None,
+    ai_html_override: Optional[str] = None,
+) -> bytes:
     """Generate the morning PDF for `today_str` using YESTERDAY's data.
     Stores result in db.morning_reports (one doc per today_str).
+    If ai_text_override/ai_html_override is provided, use that instead of regenerating AI.
     Returns the pdf bytes.
     """
     from datetime import date as _date, timedelta as _td
@@ -1220,17 +1226,28 @@ async def _build_morning_pdf_for(today_str: str, generated_by: str = "system") -
     # IMPORTANT: report_date in the PDF header should show today's morning date
     data["report_date"] = today_str
 
-    # AI summary: reuse yesterday's saved summary if exists, else generate fresh
-    ai_doc = await db.ai_summaries.find_one({"report_date": yesterday_str})
-    ai_text = ai_doc.get("text") if ai_doc else None
-    ai_html = ai_doc.get("html") if ai_doc else None
-    if not ai_text and not ai_html:
-        try:
-            from ai_summary import generate_ai_summary
-            ai_text = await generate_ai_summary(data)
-        except Exception as e:
-            logger.warning(f"Morning AI gen failed: {e}")
-            ai_text = ""
+    # Resolve AI text/html: override takes precedence
+    if ai_text_override is not None or ai_html_override is not None:
+        ai_text = ai_text_override
+        ai_html = ai_html_override
+    else:
+        # Try to reuse text saved IN THIS morning doc first (post-edit case),
+        # then fall back to yesterday's daily summary, then generate fresh.
+        existing = await db.morning_reports.find_one({"report_date": today_str})
+        if existing and (existing.get("ai_text") or existing.get("ai_html")):
+            ai_text = existing.get("ai_text")
+            ai_html = existing.get("ai_html")
+        else:
+            ai_doc = await db.ai_summaries.find_one({"report_date": yesterday_str})
+            ai_text = ai_doc.get("text") if ai_doc else None
+            ai_html = ai_doc.get("html") if ai_doc else None
+            if not ai_text and not ai_html:
+                try:
+                    from ai_summary import generate_ai_summary
+                    ai_text = await generate_ai_summary(data)
+                except Exception as e:
+                    logger.warning(f"Morning AI gen failed: {e}")
+                    ai_text = ""
 
     # Strip PIKET section from AI text if present (since morning report has no PIKET)
     if ai_text:
@@ -1244,6 +1261,7 @@ async def _build_morning_pdf_for(today_str: str, generated_by: str = "system") -
         header_title=title,
         header_subtitle="Satgas Kapuas  ·  Laporan Pagi  ·  Klasifikasi: TERBATAS",
         skip_piket=True,
+        variant="morning",
     )
 
     filename = f"Laporan_Pagi_Geospasika_{today_str}.pdf"
@@ -1260,13 +1278,60 @@ async def _build_morning_pdf_for(today_str: str, generated_by: str = "system") -
             "size_bytes": len(pdf_bytes),
             "pdf_base64": _b64.b64encode(pdf_bytes).decode("ascii"),
             "counts": counts,
-            "has_ai_summary": bool(ai_text),
+            "has_ai_summary": bool(ai_text or ai_html),
             "title": title,
+            # Persist AI text/html so user can edit later
+            "ai_text": ai_text or "",
+            "ai_html": ai_html or "",
         },
         upsert=True,
     )
     logger.info(f"Morning PDF generated: {filename} ({len(pdf_bytes)} bytes)")
     return pdf_bytes
+
+
+class MorningEditPayload(BaseModel):
+    ai_text: Optional[str] = None
+    ai_html: Optional[str] = None
+
+
+@api.get("/morning-reports/{rid}/content")
+async def morning_get_content(rid: str, _user: dict = Depends(require_role("admin", "piket"))):
+    """Return AI text/html content of a morning report for editing."""
+    doc = await db.morning_reports.find_one(
+        {"_id": _safe_objid(rid)},
+        {"pdf_base64": 0},
+    )
+    if not doc:
+        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
+    return {
+        "id": str(doc["_id"]),
+        "report_date": doc.get("report_date"),
+        "source_date": doc.get("source_date"),
+        "title": doc.get("title"),
+        "ai_text": doc.get("ai_text") or "",
+        "ai_html": doc.get("ai_html") or "",
+    }
+
+
+@api.patch("/morning-reports/{rid}/edit")
+async def morning_edit(
+    rid: str,
+    payload: MorningEditPayload,
+    user: dict = Depends(require_role("admin", "piket")),
+):
+    """Save edited AI text/html and re-render the PDF with the new content."""
+    doc = await db.morning_reports.find_one({"_id": _safe_objid(rid)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
+    report_date = doc.get("report_date")
+    await _build_morning_pdf_for(
+        report_date,
+        generated_by=f"edit:{user.get('id','?')}",
+        ai_text_override=payload.ai_text,
+        ai_html_override=payload.ai_html,
+    )
+    return {"ok": True, "report_date": report_date}
 
 
 @api.post("/morning-reports/generate")

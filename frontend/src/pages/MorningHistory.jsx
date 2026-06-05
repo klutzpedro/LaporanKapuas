@@ -4,7 +4,8 @@ import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { DownloadSimple, Trash, Eye, X, Sun, ArrowsClockwise, CircleNotch } from "@phosphor-icons/react";
+import { DownloadSimple, Trash, Eye, X, Sun, ArrowsClockwise, CircleNotch, PencilSimple, FloppyDisk } from "@phosphor-icons/react";
+import RichEditor from "@/components/RichEditor";
 
 function fmtDate(s) {
   if (!s) return "-";
@@ -26,6 +27,12 @@ export default function MorningHistory() {
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewMeta, setPreviewMeta] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
+  // Edit modal state
+  const [editMeta, setEditMeta] = useState(null);
+  const [editHtml, setEditHtml] = useState("");
+  const [editText, setEditText] = useState("");
+  const [editLoading, setEditLoading] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
 
   async function load() {
     setLoading(true);
@@ -107,6 +114,55 @@ export default function MorningHistory() {
       await load();
     } catch (e) {
       toast.error("Gagal menghapus.");
+    }
+  }
+
+  async function openEdit(it) {
+    setEditMeta(it);
+    setEditLoading(true);
+    setEditHtml("");
+    setEditText("");
+    try {
+      const { data } = await api.get(`/morning-reports/${it.id}/content`);
+      // Prefer HTML; fallback to plain text wrapped in <p>
+      const html = data.ai_html || (data.ai_text
+        ? data.ai_text.split("\n\n").map(p => `<p>${p.replace(/\n/g, "<br/>")}</p>`).join("")
+        : "");
+      setEditHtml(html);
+      setEditText(data.ai_text || "");
+    } catch (e) {
+      toast.error(apiErrorMsg(e, "Gagal memuat konten."));
+      setEditMeta(null);
+    } finally {
+      setEditLoading(false);
+    }
+  }
+
+  function closeEdit() {
+    setEditMeta(null);
+    setEditHtml("");
+    setEditText("");
+  }
+
+  async function saveEdit() {
+    if (!editMeta) return;
+    setEditSaving(true);
+    try {
+      // Derive plain text from HTML for AI parsing fallback
+      const tmp = document.createElement("div");
+      tmp.innerHTML = editHtml;
+      const plainText = tmp.innerText || tmp.textContent || editText;
+      await api.patch(`/morning-reports/${editMeta.id}/edit`, {
+        ai_html: editHtml,
+        ai_text: plainText,
+      });
+      toast.success("Laporan pagi diperbarui & PDF dirender ulang.");
+      closeEdit();
+      await load();
+    } catch (e) {
+      toast.error(apiErrorMsg(e, "Gagal menyimpan."));
+    } finally {
+      setEditSaving(false);
     }
   }
 
@@ -194,6 +250,13 @@ export default function MorningHistory() {
                           <Eye size={12} weight="bold" /> Preview
                         </button>
                         <button
+                          onClick={() => openEdit(it)}
+                          data-testid={`morning-edit-${it.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-teal-400/70 text-zinc-200 hover:text-teal-300 rounded-sm btn-tactical text-[10px]"
+                        >
+                          <PencilSimple size={12} weight="bold" /> Edit
+                        </button>
+                        <button
                           onClick={() => download(it)}
                           data-testid={`morning-download-${it.id}`}
                           className="inline-flex items-center gap-1 px-2.5 h-7 bg-amber-500 hover:bg-amber-400 text-zinc-950 rounded-sm btn-tactical text-[10px]"
@@ -261,6 +324,69 @@ export default function MorningHistory() {
                 className="w-full h-full rounded-sm bg-white"
               />
             ) : null}
+          </div>
+        </div>
+      )}
+      {/* Edit modal */}
+      {editMeta && (
+        <div
+          data-testid="morning-edit-modal"
+          className="fixed inset-0 z-50 bg-zinc-950/85 backdrop-blur-sm flex items-center justify-center p-6"
+        >
+          <div className="bg-zinc-950 border border-zinc-800 rounded-sm w-full max-w-5xl max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800">
+              <div>
+                <p className="text-[10px] font-mono uppercase tracking-wider text-zinc-500">Edit Laporan Pagi</p>
+                <h4 className="text-sm font-bold text-teal-300 font-mono">{editMeta.report_date}</h4>
+              </div>
+              <button
+                onClick={closeEdit}
+                className="w-8 h-8 rounded-sm bg-zinc-900 hover:bg-red-900 text-zinc-400 hover:text-red-300 flex items-center justify-center"
+                data-testid="morning-edit-close"
+              >
+                <X size={16} weight="bold" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-5">
+              {editLoading ? (
+                <div className="flex flex-col items-center justify-center py-20 gap-3">
+                  <CircleNotch size={28} weight="bold" className="text-teal-400 animate-spin" />
+                  <p className="text-xs uppercase text-zinc-500 font-mono">Memuat konten...</p>
+                </div>
+              ) : (
+                <>
+                  <p className="text-xs text-zinc-500 mb-3">
+                    Edit teks ringkasan eksekutif & section LID/KONTRA/GAL/MEDMON/GEOINT. PDF akan
+                    di-<b className="text-teal-300">rebuild otomatis</b> setelah Anda klik Simpan.
+                  </p>
+                  <RichEditor
+                    value={editHtml}
+                    onChange={setEditHtml}
+                    testid="morning-rich-editor"
+                  />
+                </>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 px-5 py-3 border-t border-zinc-800 bg-zinc-950">
+              <Button
+                onClick={closeEdit}
+                variant="outline"
+                className="h-9 px-4 rounded-sm border-zinc-700 text-xs"
+                data-testid="morning-edit-cancel"
+              >
+                Batal
+              </Button>
+              <Button
+                onClick={saveEdit}
+                disabled={editSaving || editLoading}
+                data-testid="morning-edit-save"
+                className="h-9 px-4 rounded-sm bg-teal-500 hover:bg-teal-400 text-zinc-950 font-bold text-xs"
+              >
+                {editSaving
+                  ? <><CircleNotch size={14} weight="bold" className="mr-1.5 animate-spin" />Menyimpan & rebuild PDF...</>
+                  : <><FloppyDisk size={14} weight="bold" className="mr-1.5" />Simpan & Render Ulang</>}
+              </Button>
+            </div>
           </div>
         </div>
       )}

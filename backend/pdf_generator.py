@@ -702,12 +702,22 @@ def _get_logo():
 
 
 # ---------- HEADER / FOOTER ----------
-def _draw_header(c, report_date, title_override=None, subtitle_override=None):
-    c.setFillColor(COLOR_HEADER)
+def _draw_header(c, report_date, title_override=None, subtitle_override=None, variant="default"):
+    # Morning variant: teal/cyan palette instead of dark+amber
+    if variant == "morning":
+        bg = HexColor("#0F766E")       # Teal-700 (deeper than 600 for prominence)
+        accent_bar = HexColor("#FBBF24")  # Amber-400 (sunrise feel)
+        tag_color = HexColor("#FEF3C7")   # Cream highlight
+    else:
+        bg = COLOR_HEADER
+        accent_bar = COLOR_AMBER
+        tag_color = COLOR_AMBER
+
+    c.setFillColor(bg)
     c.rect(0, PAGE_H - 18 * mm, PAGE_W, 18 * mm, stroke=0, fill=1)
-    c.setFillColor(COLOR_AMBER)
+    c.setFillColor(accent_bar)
     c.rect(MARGIN, PAGE_H - 18 * mm, 3 * mm, 18 * mm, stroke=0, fill=1)
-    # logo (top-left, next to amber bar)
+    # logo (top-left, next to accent bar)
     logo = _get_logo()
     text_x = MARGIN + 6 * mm
     if logo:
@@ -718,27 +728,37 @@ def _draw_header(c, report_date, title_override=None, subtitle_override=None):
             text_x = MARGIN + 5 * mm + logo_size + 2 * mm
         except Exception:
             pass
+
+    # Morning variant: tambahkan badge "LAPORAN PAGI" prominent
+    if variant == "morning":
+        # Sunrise icon (orange circle as sun) di kanan judul
+        c.setFillColor(HexColor("#FCD34D"))
+        c.circle(text_x + 100, PAGE_H - 11 * mm, 2.2 * mm, stroke=0, fill=1)
+
     c.setFillColor(white)
     c.setFont("Helvetica-Bold", 12)
     c.drawString(text_x, PAGE_H - 9 * mm, title_override or "BAIS TNI · SUMMARY GEOSPASIKA HARIAN")
     c.setFont("Helvetica", 7)
     c.drawString(text_x, PAGE_H - 13.5 * mm, subtitle_override or "Satgas Kapuas  ·  Klasifikasi: TERBATAS")
     c.setFont("Helvetica-Bold", 9)
-    c.setFillColor(COLOR_AMBER)
+    c.setFillColor(tag_color)
     c.drawRightString(PAGE_W - MARGIN, PAGE_H - 9 * mm, f"Tanggal: {report_date}")
-    c.setFillColor(HexColor("#94A3B8"))
+    c.setFillColor(HexColor("#CBD5E1") if variant == "morning" else HexColor("#94A3B8"))
     c.setFont("Helvetica", 7)
     c.drawRightString(PAGE_W - MARGIN, PAGE_H - 13.5 * mm,
                       f"Dicetak {datetime.now().strftime('%d %b %Y %H:%M')} WIB")
 
 
-def _draw_footer(c, page_num):
-    c.setStrokeColor(COLOR_BORDER)
-    c.setLineWidth(0.4)
+def _draw_footer(c, page_num, variant="default"):
+    accent = HexColor("#0F766E") if variant == "morning" else COLOR_BORDER
+    c.setStrokeColor(accent)
+    c.setLineWidth(0.6 if variant == "morning" else 0.4)
     c.line(MARGIN, 9 * mm, PAGE_W - MARGIN, 9 * mm)
     c.setFillColor(COLOR_MUTED)
     c.setFont("Helvetica", 6.5)
-    c.drawString(MARGIN, 5.5 * mm, "DOKUMEN INTERNAL — TIDAK UNTUK DISEBARLUASKAN")
+    label = "LAPORAN PAGI · INTERNAL — TIDAK UNTUK DISEBARLUASKAN" if variant == "morning" \
+        else "DOKUMEN INTERNAL — TIDAK UNTUK DISEBARLUASKAN"
+    c.drawString(MARGIN, 5.5 * mm, label)
     c.drawRightString(PAGE_W - MARGIN, 5.5 * mm, f"Hal {page_num}")
 
 
@@ -2263,7 +2283,7 @@ def _draw_piket_card(c, x, y_top, w, item):
 
 
 # ---------- MAIN ----------
-def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_subtitle=None, skip_piket=False):
+def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_subtitle=None, skip_piket=False, variant="default"):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     rd = data.get("report_date", "")
@@ -2279,10 +2299,10 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
     w = PAGE_W - 2 * MARGIN
 
     def new_page():
-        _draw_footer(c, state["page"])
+        _draw_footer(c, state["page"], variant=variant)
         c.showPage()
         state["page"] += 1
-        _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle)
+        _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant=variant)
         state["y"] = avail_top
 
     def ensure_space(needed):
@@ -2314,7 +2334,7 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
         section_title(title, count_text)
 
     # =========== PAGE 1: Executive Summary (FULL PAGE) ===========
-    _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle)
+    _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant=variant)
     sum_top = avail_top
     sum_bottom = avail_bottom
     sum_h = sum_top - sum_bottom
@@ -2500,7 +2520,7 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
     new_page()
     _draw_geoint_fullpage(c, MARGIN, MARGIN + w, avail_top, avail_bottom, data)
 
-    _draw_footer(c, state["page"])
+    _draw_footer(c, state["page"], variant=variant)
     c.showPage()
     c.save()
     return buf.getvalue()
