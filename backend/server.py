@@ -1249,10 +1249,39 @@ async def _build_morning_pdf_for(
                     logger.warning(f"Morning AI gen failed: {e}")
                     ai_text = ""
 
-    # Strip PIKET section from AI text if present (since morning report has no PIKET)
+    # Strip PIKET section from AI text/html if present (morning report has no PIKET)
     if ai_text:
         import re
-        ai_text = re.sub(r"(?ms)^\s*PIKET\s*:\s*$.*?(?=^\s*REKOMENDASI\s*:|\Z)", "", ai_text)
+        # Hapus dari label "PIKET:" sampai sebelum "REKOMENDASI:" atau end
+        ai_text = re.sub(
+            r"(?ims)(?:^|\n)\s*PIKET\s*:.*?(?=(?:\n\s*REKOMENDASI\s*:)|\Z)",
+            "\n",
+            ai_text,
+        )
+    if ai_html:
+        import re
+        # Strategy: match from the START of the block that contains "PIKET:" header
+        # up to (but not including) the START of the block that contains "REKOMENDASI:" header.
+        # This catches both the header block AND all subsequent body blocks until REKOMENDASI.
+        # Pattern: `<wrapper>PIKET:...` ... up to (not including) `<wrapper>REKOMENDASI:`
+        pattern = re.compile(
+            r"""(?isx)
+            (?:                                  # opening wrapper tag of PIKET header (optional)
+                <(?:p|h[1-6]|div|li)[^>]*>\s*
+                (?:<[^>]+>\s*)*                  # optional inner tags like <b><strong>
+            )?
+            PIKET\s*:                            # the literal label
+            .*?                                  # body content (any tags)
+            (?=                                  # lookahead — stop before REKOMENDASI header block
+                (?:<(?:p|h[1-6]|div|li)[^>]*>\s*(?:<[^>]+>\s*)*)?
+                REKOMENDASI\s*:
+                | \Z
+            )
+            """
+        )
+        ai_html = pattern.sub("", ai_html)
+        # Cleanup empty paragraphs/divs left over
+        ai_html = re.sub(r"<(p|div)[^>]*>\s*(?:<br\s*/?>\s*)*</\1>", "", ai_html, flags=re.IGNORECASE)
 
     title = _morning_title_for_date(today_str)
     pdf_bytes = await run_in_threadpool(
