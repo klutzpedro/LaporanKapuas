@@ -1288,7 +1288,7 @@ async def _build_morning_pdf_for(
         build_summary_pdf, data, ai_text,
         ai_html=ai_html,
         header_title=title,
-        header_subtitle="Satgas Kapuas  ·  Laporan Pagi  ·  Klasifikasi: TERBATAS",
+        header_subtitle="Laporan Pagi  ·  Klasifikasi: TERBATAS",
         skip_piket=True,
         variant="morning",
     )
