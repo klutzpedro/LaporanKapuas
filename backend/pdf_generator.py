@@ -2688,20 +2688,22 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
     state["y"] -= 2 * mm
 
     # PIKET — laporan Satgas Tek/Sandi/Medis (placed BEFORE GEOINT per requirement)
-    piket_items = data.get("piket", [])
-    first_h = _measure_piket_card(piket_items[0], w) if piket_items else 12 * mm
-    begin_section("LAPORAN SATGAS TEK / SANDI / MEDIS (PIKET)", f"{len(piket_items)} LAPORAN", first_h)
-    if not piket_items:
-        c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
-        c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada laporan piket.")
-        state["y"] -= 6 * mm
-    else:
-        for it in piket_items:
-            h_est = _measure_piket_card(it, w)
-            if state["y"] - h_est < avail_bottom:
-                new_page()
-            _draw_piket_card(c, MARGIN, state["y"], w, it)
-            state["y"] -= h_est + 2 * mm
+    # Skip entire section for morning reports (skip_piket=True)
+    if not skip_piket:
+        piket_items = data.get("piket", [])
+        first_h = _measure_piket_card(piket_items[0], w) if piket_items else 12 * mm
+        begin_section("LAPORAN SATGAS TEK / SANDI / MEDIS (PIKET)", f"{len(piket_items)} LAPORAN", first_h)
+        if not piket_items:
+            c.setFillColor(COLOR_MUTED); c.setFont("Helvetica-Oblique", 7)
+            c.drawString(MARGIN + 2 * mm, state["y"] - 4 * mm, "Tidak ada laporan piket.")
+            state["y"] -= 6 * mm
+        else:
+            for it in piket_items:
+                h_est = _measure_piket_card(it, w)
+                if state["y"] - h_est < avail_bottom:
+                    new_page()
+                _draw_piket_card(c, MARGIN, state["y"], w, it)
+                state["y"] -= h_est + 2 * mm
 
     # GEOINT — DEDICATED FULL PAGE with big map + name labels
     new_page()
