@@ -400,6 +400,135 @@ def _draw_sentiment_cases_strip(c, x, y, w, h, data):
         c.drawString(cx + 2 * mm + (cw - 4 * mm) * 0.67, legend_y, f"~{_fmt_pct(case['u'])}")
 
 
+def _draw_all_pie_charts_grid(c, x, y_top, w, data, y_bottom_limit):
+    """Draw ALL MEDMON subjects as pie charts in a responsive 3-column grid.
+    Returns (final_y, needs_new_page_for_remaining, remaining_cases).
+    For morning report only — replaces 6-case strip with full coverage.
+    """
+    cases = []
+    for it in data.get("medmon", []):
+        if _has_sentiment(it):
+            cases.append({
+                "label": (it.get("subjek") or "").upper()[:18],
+                "title": (it.get("subjek") or "-")[:36],
+                "p": it.get("sentiment_positif") or 0,
+                "n": it.get("sentiment_negatif") or 0,
+                "u": it.get("sentiment_netral") or 0,
+            })
+
+    # Title bar
+    bar_h = 5 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(x, y_top - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(x + 2 * mm, y_top - bar_h + 1.4 * mm,
+                 f"GRAFIK SENTIMEN — SEMUA SUBJEK MEDMON ({len(cases)})")
+    cur_y = y_top - bar_h - 3 * mm
+
+    if not cases:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(x + 2 * mm, cur_y - 3 * mm, "Belum ada subjek dengan data sentimen.")
+        return cur_y - 8 * mm
+
+    # Grid: 3 columns, card height ~46 mm
+    cols = 3
+    gutter = 3 * mm
+    cw = (w - (cols + 1) * gutter) / cols
+    ch = 46 * mm
+    col = 0
+    row_y = cur_y
+    for case in cases:
+        # New page if row doesn't fit
+        if row_y - ch < y_bottom_limit:
+            # Page is full — caller must handle pagination; signal by returning early
+            return row_y, cases[cases.index(case):]
+        cx = x + gutter + col * (cw + gutter)
+        cy_card = row_y - ch
+        # Border
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.4)
+        c.rect(cx, cy_card, cw, ch, stroke=1, fill=0)
+        # Top accent
+        c.setFillColor(COLOR_PURPLE)
+        c.rect(cx, cy_card + ch - 1.2 * mm, cw, 1.2 * mm, stroke=0, fill=1)
+        # Title
+        c.setFillColor(COLOR_HEADER)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(cx + 2 * mm, cy_card + ch - 5 * mm, case["title"])
+        # Pie centered
+        pie_r = min(cw / 2 - 5 * mm, 14 * mm)
+        pie_cx = cx + cw / 2
+        pie_cy = cy_card + ch / 2 - 1 * mm
+        draw_sentiment_pie(c, pie_cx, pie_cy, pie_r, case["p"], case["n"], case["u"])
+        # Legend bottom
+        c.setFont("Helvetica-Bold", 6.5)
+        legend_y = cy_card + 2 * mm
+        c.setFillColor(COLOR_GREEN)
+        c.drawString(cx + 2 * mm, legend_y, f"+ {case['p']}%")
+        c.setFillColor(COLOR_RED)
+        c.drawString(cx + cw / 2 - 4 * mm, legend_y, f"- {case['n']}%")
+        c.setFillColor(HexColor("#71717A"))
+        c.drawString(cx + cw - 12 * mm, legend_y, f"~ {case['u']}%")
+        # advance grid
+        col += 1
+        if col >= cols:
+            col = 0
+            row_y -= ch + gutter
+    # If we ended mid-row, advance to next row baseline
+    if col != 0:
+        row_y -= ch + gutter
+    return row_y, []
+
+
+def _draw_brief_list(c, x, y_top, w, title, items, key_field="judul", count_text=None):
+    """Draw a brief numbered list (no detail cards) — for morning report.
+    Returns final_y after rendering."""
+    bar_h = 5 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(x, y_top - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 8)
+    label = f"{title}  ({count_text or len(items)})"
+    c.drawString(x + 2 * mm, y_top - bar_h + 1.4 * mm, label)
+    cur_y = y_top - bar_h - 3 * mm
+
+    if not items:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(x + 2 * mm, cur_y - 3 * mm, "Tidak ada data.")
+        return cur_y - 6 * mm
+
+    c.setFont("Helvetica", 8.5)
+    for i, it in enumerate(items, 1):
+        txt = ""
+        for k in (key_field if isinstance(key_field, (list, tuple)) else [key_field]):
+            v = it.get(k)
+            if v:
+                txt = str(v)
+                break
+        if not txt:
+            continue
+        # Truncate long titles to 2 lines
+        max_chars = 140
+        if len(txt) > max_chars:
+            txt = txt[: max_chars - 1] + "…"
+        c.setFillColor(COLOR_AMBER)
+        c.setFont("Helvetica-Bold", 8.5)
+        c.drawString(x + 2 * mm, cur_y - 3 * mm, f"{i}.")
+        c.setFillColor(HexColor("#1F2937"))
+        c.setFont("Helvetica", 8.5)
+        # Wrap to fit
+        lines = wrap_to_width(txt, "Helvetica", 8.5, w - 12 * mm)[:2]
+        ly = cur_y - 3 * mm
+        for ln in lines:
+            c.drawString(x + 7 * mm, ly, ln)
+            ly -= 3.5 * mm
+        cur_y = ly - 0.5 * mm
+    return cur_y - 2 * mm
+
+
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
 # Render full Papua region at zoom 6 (same physical size as before).
 # Mask layer covers non-Indonesian areas so visually ONLY Tanah Papua tampil.
@@ -2578,6 +2707,57 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
         state["y"] -= 4 * mm
     _draw_sentiment_trend_chart(c, MARGIN, state["y"] - trend_h, w, trend_h, data.get("medmon_trend") or {})
     state["y"] -= trend_h + 4 * mm
+
+    # === MORNING VARIANT: simplified layout ===
+    # All pie charts (auto-paginated) + brief LID/KONTRA/GAL lists. SKIP medmon detail
+    # cards, PIKET, and GEOINT full page.
+    if variant == "morning":
+        # ALL pie charts (paginated grid)
+        cases_remaining = None
+        # First call
+        result = _draw_all_pie_charts_grid(c, MARGIN, state["y"], w, data, avail_bottom)
+        if isinstance(result, tuple):
+            state["y"], cases_remaining = result
+        else:
+            state["y"] = result
+        # Continue on new pages until all pies drawn
+        while cases_remaining:
+            new_page()
+            state["y"] = avail_top
+            tmp_data = {"medmon": cases_remaining}
+            result = _draw_all_pie_charts_grid(c, MARGIN, state["y"], w, tmp_data, avail_bottom)
+            if isinstance(result, tuple):
+                state["y"], cases_remaining = result
+            else:
+                state["y"] = result
+                cases_remaining = None
+
+        state["y"] -= 3 * mm
+
+        # Brief LID/KONTRA/GAL — each on a new section, paginated as needed
+        for sec_title, sec_items, sec_key in [
+            ("RESUME — BERITA TRENDING (LID)", data.get("lid", []), ("judul", "title")),
+            ("RESUME — PROFILING (KONTRA)", data.get("kontra", []), ("subjek", "subject", "nama")),
+            ("RESUME — KONTEN / NARASI (GAL)", data.get("gal", []), ("topik", "topic", "judul")),
+        ]:
+            # Estimate min space needed (header + 1 line)
+            min_h = 14 * mm
+            if state["y"] - min_h < avail_bottom:
+                new_page()
+                state["y"] = avail_top
+            state["y"] = _draw_brief_list(c, MARGIN, state["y"], w, sec_title, sec_items, key_field=sec_key)
+            # Auto-page if section overflows — _draw_brief_list does not paginate
+            # internally; for safety, check after each section.
+            if state["y"] < avail_bottom + 10 * mm:
+                # nothing — next section's pre-check handles it
+                pass
+
+        _draw_footer(c, state["page"], variant=variant)
+        c.showPage()
+        c.save()
+        return buf.getvalue()
+
+    # === DEFAULT VARIANT (full daytime report) ===
     if state["y"] - cases_h < avail_bottom:
         new_page()
         state["y"] = avail_top

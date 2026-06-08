@@ -1258,6 +1258,41 @@ async def _build_morning_pdf_for(
             "\n",
             ai_text,
         )
+
+    # MORNING: keep ONLY brief narrative — RINGKASAN EKSEKUTIF + REKOMENDASI.
+    # Drop LID/KONTRA/GAL/MEDMON/GEOINT detail blocks since pie charts + brief
+    # lists already show them visually.
+    if ai_text:
+        import re
+        ai_text = re.sub(
+            r"(?ims)(?:^|\n)\s*(?:LID|KONTRA|GAL|MEDMON|GEOINT)\s*:.*?(?=(?:\n\s*(?:LID|KONTRA|GAL|MEDMON|GEOINT|REKOMENDASI)\s*:)|\Z)",
+            "\n",
+            ai_text,
+        )
+        # Collapse 3+ newlines to 2
+        ai_text = re.sub(r"\n{3,}", "\n\n", ai_text).strip()
+    if ai_html:
+        import re
+        # Drop sections starting from LID/KONTRA/GAL/MEDMON/GEOINT header until
+        # the next allowed header (PIKET handled separately above, REKOMENDASI is the stop).
+        pattern_sections = re.compile(
+            r"""(?isx)
+            (?:
+                <(?:p|h[1-6]|div|li)[^>]*>\s*
+                (?:<[^>]+>\s*)*
+            )?
+            (?:LID|KONTRA|GAL|MEDMON|GEOINT)\s*:
+            .*?
+            (?=
+                (?:<(?:p|h[1-6]|div|li)[^>]*>\s*(?:<[^>]+>\s*)*)?
+                (?:LID|KONTRA|GAL|MEDMON|GEOINT|REKOMENDASI)\s*:
+                | \Z
+            )
+            """
+        )
+        ai_html = pattern_sections.sub("", ai_html)
+        ai_html = re.sub(r"<(p|div)[^>]*>\s*(?:<br\s*/?>\s*)*</\1>", "", ai_html, flags=re.IGNORECASE)
+
     if ai_html:
         import re
         # Strategy: match from the START of the block that contains "PIKET:" header
@@ -1422,44 +1457,6 @@ async def morning_delete(rid: str, _user: dict = Depends(require_role("admin")))
     if res.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
     return {"ok": True}
-
-
-@api.post("/morning-reports/{rid}/infographic")
-async def morning_infographic(
-    rid: str,
-    _user: dict = Depends(require_role("admin", "piket")),
-):
-    """Generate a single-page A4 INFOGRAPHIC PDF for the morning report using Claude SVG.
-
-    Uses the morning report's source_date to load the underlying team data, then asks
-    Claude Sonnet 4.5 to draw an SVG poster which is rendered to PNG and embedded in
-    a brand new PDF.  Streams the PDF directly (not stored — regenerable on demand).
-    """
-    doc = await db.morning_reports.find_one({"_id": _safe_objid(rid)})
-    if not doc:
-        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
-
-    source_date = doc.get("source_date") or ""
-    report_date = doc.get("report_date") or ""
-    data = await collect_daily_data(source_date) if source_date else {
-        "lid": [], "kontra": [], "gal": [], "medmon": [], "geoint": [], "piket": [],
-    }
-    data["report_date"] = report_date
-    ai_text = doc.get("ai_text") or ""
-
-    from infographic_generator import build_morning_infographic_pdf
-    try:
-        pdf_bytes = await build_morning_infographic_pdf(data, ai_text=ai_text)
-    except Exception as e:
-        logger.exception("Infographic generation failed")
-        raise HTTPException(status_code=500, detail=f"Gagal generate infografis: {e}")
-
-    filename = f"Infografis_Laporan_Pagi_{report_date}.pdf"
-    return StreamingResponse(
-        iter([pdf_bytes]),
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
 
 
 # ----- SCHEDULER: 07:00 WIB daily auto-generate -----
