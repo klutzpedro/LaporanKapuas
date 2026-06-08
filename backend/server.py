@@ -1424,6 +1424,44 @@ async def morning_delete(rid: str, _user: dict = Depends(require_role("admin")))
     return {"ok": True}
 
 
+@api.post("/morning-reports/{rid}/infographic")
+async def morning_infographic(
+    rid: str,
+    _user: dict = Depends(require_role("admin", "piket")),
+):
+    """Generate a single-page A4 INFOGRAPHIC PDF for the morning report using Claude SVG.
+
+    Uses the morning report's source_date to load the underlying team data, then asks
+    Claude Sonnet 4.5 to draw an SVG poster which is rendered to PNG and embedded in
+    a brand new PDF.  Streams the PDF directly (not stored — regenerable on demand).
+    """
+    doc = await db.morning_reports.find_one({"_id": _safe_objid(rid)})
+    if not doc:
+        raise HTTPException(status_code=404, detail="Laporan pagi tidak ditemukan")
+
+    source_date = doc.get("source_date") or ""
+    report_date = doc.get("report_date") or ""
+    data = await collect_daily_data(source_date) if source_date else {
+        "lid": [], "kontra": [], "gal": [], "medmon": [], "geoint": [], "piket": [],
+    }
+    data["report_date"] = report_date
+    ai_text = doc.get("ai_text") or ""
+
+    from infographic_generator import build_morning_infographic_pdf
+    try:
+        pdf_bytes = await build_morning_infographic_pdf(data, ai_text=ai_text)
+    except Exception as e:
+        logger.exception("Infographic generation failed")
+        raise HTTPException(status_code=500, detail=f"Gagal generate infografis: {e}")
+
+    filename = f"Infografis_Laporan_Pagi_{report_date}.pdf"
+    return StreamingResponse(
+        iter([pdf_bytes]),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 # ----- SCHEDULER: 07:00 WIB daily auto-generate -----
 MORNING_HOUR_WIB = int(os.environ.get("MORNING_HOUR_WIB", "7"))
 MORNING_MIN_WIB = int(os.environ.get("MORNING_MIN_WIB", "0"))

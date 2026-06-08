@@ -4,7 +4,7 @@ import { PageHeader, Card, Empty } from "@/components/Shell";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/lib/auth";
 import { toast } from "sonner";
-import { DownloadSimple, Trash, Eye, X, Sun, ArrowsClockwise, CircleNotch, PencilSimple, FloppyDisk } from "@phosphor-icons/react";
+import { DownloadSimple, Trash, Eye, X, Sun, ArrowsClockwise, CircleNotch, PencilSimple, FloppyDisk, ChartBar } from "@phosphor-icons/react";
 import RichEditor from "@/components/RichEditor";
 
 function fmtDate(s) {
@@ -33,6 +33,8 @@ export default function MorningHistory() {
   const [editText, setEditText] = useState("");
   const [editLoading, setEditLoading] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
+  // Infographic loading state (per-row id)
+  const [infoLoadingId, setInfoLoadingId] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -81,6 +83,27 @@ export default function MorningHistory() {
       URL.revokeObjectURL(url);
     } catch (e) {
       toast.error("Gagal mengunduh.");
+    }
+  }
+
+  async function downloadInfographic(it) {
+    setInfoLoadingId(it.id);
+    try {
+      const res = await api.post(`/morning-reports/${it.id}/infographic`, null, {
+        responseType: "blob",
+        timeout: 180000, // 3 minutes — Claude SVG can take time
+      });
+      const url = URL.createObjectURL(new Blob([res.data], { type: "application/pdf" }));
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Infografis_Laporan_Pagi_${it.report_date}.pdf`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Infografis berhasil di-generate.");
+    } catch (e) {
+      toast.error(apiErrorMsg(e, "Gagal generate infografis."));
+    } finally {
+      setInfoLoadingId(null);
     }
   }
 
@@ -255,6 +278,17 @@ export default function MorningHistory() {
                           className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-teal-400/70 text-zinc-200 hover:text-teal-300 rounded-sm btn-tactical text-[10px]"
                         >
                           <PencilSimple size={12} weight="bold" /> Edit
+                        </button>
+                        <button
+                          onClick={() => downloadInfographic(it)}
+                          disabled={infoLoadingId === it.id}
+                          data-testid={`morning-infographic-${it.id}`}
+                          className="inline-flex items-center gap-1 px-2.5 h-7 bg-zinc-900 hover:bg-zinc-800 border border-zinc-700 hover:border-cyan-400/70 text-zinc-200 hover:text-cyan-300 rounded-sm btn-tactical text-[10px] disabled:opacity-50 disabled:cursor-wait"
+                          title="Generate versi infografis (Claude AI)"
+                        >
+                          {infoLoadingId === it.id
+                            ? <><CircleNotch size={12} weight="bold" className="animate-spin" /> Generating...</>
+                            : <><ChartBar size={12} weight="bold" /> Infografis</>}
                         </button>
                         <button
                           onClick={() => download(it)}
