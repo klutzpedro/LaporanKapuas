@@ -852,10 +852,10 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
     cols = 3 if len(cases) == 5 else 4
     gutter = 3 * mm
     cw = (w - (cols - 1) * gutter) / cols
-    ch_card = 36 * mm if cols == 3 else 28 * mm
+    ch_card = 30 * mm if cols == 3 else 26 * mm
     rows_needed = (len(cases) + cols - 1) // cols if cases else 1
-    # Reserve ~38mm resume + ~115mm cipta opini/peta section
-    max_rows_avail = max(1, int((cur_y - avail_bottom - 155 * mm) // (ch_card + gutter)))
+    # Reserve ~60mm resume + ~100mm cipta opini/peta section
+    max_rows_avail = max(1, int((cur_y - avail_bottom - 165 * mm) // (ch_card + gutter)))
     if rows_needed > max_rows_avail:
         # Cap rows; show top cases by sentiment intensity (positif+negatif)
         cases = sorted(cases, key=lambda x: x["p"] + x["n"], reverse=True)[: max_rows_avail * cols]
@@ -900,13 +900,12 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
             row_y -= ch_card + gutter
         cur_y = row_y - 2 * mm
 
-    # --- Resume Singkat: LID / KONTRA / GAL (top 3 each, 1 line) ---
-    def _short(it, keys, n=80):
+    # --- Resume Singkat: LID / KONTRA / GAL (top 3 each, full text wrap) ---
+    def _full(it, keys):
         for k in keys:
             v = it.get(k)
             if v:
-                s = str(v).strip()
-                return s if len(s) <= n else s[: n - 1] + "…"
+                return str(v).strip()
         return ""
 
     sections = [
@@ -914,8 +913,8 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         ("KONTRA — PROFILING", data.get("kontra", []), ("nama_to", "nama", "subjek"), HexColor("#EF4444")),
         ("GAL", data.get("gal", []), ("topik", "topic", "judul"), HexColor("#3B82F6")),
     ]
-    # Compact resume panel
-    panel_h = 38 * mm
+    # Auto-size panel based on content (min 50mm, max 70mm) so all text fits
+    panel_h = 60 * mm
     panel_top = cur_y
     panel_bottom = panel_top - panel_h
     # outer panel
@@ -932,28 +931,36 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         c.setFillColor(white)
         c.setFont("Helvetica-Bold", 8)
         c.drawString(cx + 1.5 * mm, panel_top - 5 * mm + 1.4 * mm, f"{lab}  ·  {len(items)}")
-        # Items (top 3)
+        # Items (top 3) — render full text wrapped, no ellipsis
         item_y = panel_top - 5 * mm - 4 * mm
+        body_bottom = panel_bottom + 1.5 * mm
         if not items:
             c.setFillColor(COLOR_MUTED)
             c.setFont("Helvetica-Oblique", 7)
             c.drawString(cx + 1.5 * mm, item_y, "Tidak ada laporan.")
         else:
             for idx, it in enumerate(items[:3], 1):
-                t = _short(it, keys, n=70)
-                if not t:
+                full_t = _full(it, keys)
+                if not full_t:
                     continue
+                avail_lw = col_w - 7 * mm
+                lines = wrap_to_width(full_t, "Helvetica", 6.5, avail_lw)
+                # Break early if we ran out of vertical space
+                needed_h = max(1, len(lines)) * 2.8 * mm + 2 * mm
+                if item_y - needed_h < body_bottom:
+                    break
                 c.setFillColor(color)
                 c.setFont("Helvetica-Bold", 7)
                 c.drawString(cx + 1.5 * mm, item_y, f"{idx}.")
                 c.setFillColor(HexColor("#1F2937"))
-                c.setFont("Helvetica", 7)
-                lines = wrap_to_width(t, "Helvetica", 7, col_w - 7 * mm)[:2]
+                c.setFont("Helvetica", 6.5)
                 ly = item_y
                 for ln in lines:
+                    if ly < body_bottom:
+                        break
                     c.drawString(cx + 4.5 * mm, ly, ln)
-                    ly -= 3 * mm
-                item_y = ly - 1.5 * mm
+                    ly -= 2.8 * mm
+                item_y = ly - 1 * mm
 
     cur_y = panel_bottom - 4 * mm
 
@@ -990,13 +997,27 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
             img_cols = 2
             img_gutter = 2 * mm
             img_inner_w = (left_w - (img_cols + 1) * img_gutter) / img_cols
-            # Caption area now fits 2 wrapped lines
-            caption_strip_h = 8 * mm
-            card_h_total = 42 * mm
-            img_inner_h = card_h_total - caption_strip_h
+            # First-pass: compute max caption lines across all items so all cards same height
+            cap_font_name = "Helvetica-Bold"
+            cap_font_size = 6
+            cap_line_h = 2.8 * mm
+            avail_text_w = img_inner_w - 1.6 * mm
+            wrapped_caps = []
+            max_lines = 1
+            for it in gal_items[:4]:
+                raw = (it.get("judul") or it.get("topik") or "").strip()
+                ln = wrap_to_width(raw, cap_font_name, cap_font_size, avail_text_w) or [""]
+                # Cap at 4 lines max
+                ln = ln[:4]
+                wrapped_caps.append(ln)
+                if len(ln) > max_lines:
+                    max_lines = len(ln)
+            caption_strip_h = max_lines * cap_line_h + 2 * mm
+            # Auto card height: image ~30mm + caption strip
+            img_inner_h = 30 * mm
+            card_h_total = img_inner_h + caption_strip_h
             img_x_start = MARGIN + img_gutter
             img_y_start = sec_top - 5 * mm - img_gutter - card_h_total
-            from reportlab.pdfbase.pdfmetrics import stringWidth
             for k, it in enumerate(gal_items[:4]):
                 col_i = k % img_cols
                 row_i = k // img_cols
@@ -1017,25 +1038,14 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                 # Caption strip (below image, white bg)
                 c.setFillColor(white)
                 c.rect(ix, iy, img_inner_w, caption_strip_h, stroke=0, fill=1)
-                # Wrap caption to fit 2 lines
-                raw = (it.get("judul") or it.get("topik") or "").strip()
-                avail_text_w = img_inner_w - 1.6 * mm
-                lines = wrap_to_width(raw, "Helvetica-Bold", 6.5, avail_text_w)
-                # Limit to 2 lines, ellipsize last if longer
-                if len(lines) > 2:
-                    ln2 = lines[1]
-                    rest = " ".join(lines[2:])
-                    # Add ellipsis on line 2 within width
-                    candidate = ln2 + " " + rest
-                    while candidate and stringWidth(candidate + "…", "Helvetica-Bold", 6.5) > avail_text_w:
-                        candidate = candidate[:-1]
-                    lines = [lines[0], candidate.rstrip() + "…"]
+                # Draw all wrapped lines (full text, no ellipsis)
+                lines = wrapped_caps[k]
                 c.setFillColor(HexColor("#1F2937"))
-                c.setFont("Helvetica-Bold", 6.5)
+                c.setFont(cap_font_name, cap_font_size)
                 ty = iy + caption_strip_h - 2.5 * mm
-                for ln in lines[:2]:
+                for ln in lines:
                     c.drawString(ix + 0.8 * mm, ty, ln)
-                    ty -= 3 * mm
+                    ty -= cap_line_h
 
         # RIGHT: Peta OPM + Daftar Tokoh
         peta_x = MARGIN + left_w + 3 * mm
