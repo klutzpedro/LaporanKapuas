@@ -529,6 +529,279 @@ def _draw_brief_list(c, x, y_top, w, title, items, key_field="judul", count_text
     return cur_y - 2 * mm
 
 
+def _extract_brief_bullets(ai_text: str, max_bullets: int = 5, max_chars: int = 110):
+    """Pull short bullet points (≤max_chars each) from AI text, prefer RINGKASAN/REKOMENDASI."""
+    import re
+    if not ai_text:
+        return []
+    # Prefer RINGKASAN EKSEKUTIF section, otherwise full text
+    m = re.search(r"(?ims)RINGKASAN\s*EKSEKUTIF\s*:?(.*?)(?=\n[A-Z]{4,}\s*:|\Z)", ai_text)
+    body = m.group(1) if m else ai_text
+    out = []
+    for raw in body.splitlines():
+        ln = raw.strip().lstrip("•-*").strip()
+        ln = re.sub(r"\s+", " ", ln)
+        if len(ln) < 12:
+            continue
+        if len(ln) > max_chars:
+            ln = ln[: max_chars - 1] + "…"
+        out.append(ln)
+        if len(out) >= max_bullets:
+            break
+    return out
+
+
+def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd):
+    """PAGE 2: Dashboard infografis — KPI strip + executive bullets + trend chart."""
+    _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant="morning")
+
+    avail_top = PAGE_H - 18 * mm - 4 * mm
+    avail_bottom = 14 * mm + 5 * mm
+    w = PAGE_W - 2 * MARGIN
+
+    # --- Title bar ---
+    bar_h = 6 * mm
+    cur_y = avail_top
+    c.setFillColor(COLOR_HEADER)
+    c.rect(MARGIN, cur_y - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(HexColor("#FFD700"))
+    c.rect(MARGIN, cur_y - bar_h, 1.4 * mm, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(MARGIN + 3 * mm, cur_y - bar_h + 1.6 * mm, "DASHBOARD INTELIJEN — RINGKAS")
+    c.setFont("Helvetica", 7.5)
+    c.drawRightString(MARGIN + w - 2 * mm, cur_y - bar_h + 1.6 * mm, f"Periode  {rd}")
+    cur_y -= bar_h + 4 * mm
+
+    # --- KPI Strip (5 cards) ---
+    teams = [
+        ("LID", len(data.get("lid", [])), HexColor("#F59E0B")),
+        ("KONTRA", len(data.get("kontra", [])), HexColor("#EF4444")),
+        ("GAL", len(data.get("gal", [])), HexColor("#3B82F6")),
+        ("MEDMON", len(data.get("medmon", [])), HexColor("#A855F7")),
+        ("GEOINT", len(data.get("geoint", [])), HexColor("#10B981")),
+    ]
+    n = len(teams)
+    gutter = 3 * mm
+    card_w = (w - (n - 1) * gutter) / n
+    card_h = 24 * mm
+    for i, (lab, cnt, col) in enumerate(teams):
+        cx = MARGIN + i * (card_w + gutter)
+        cy = cur_y - card_h
+        # card bg
+        c.setFillColor(HexColor("#0F172A"))
+        c.setStrokeColor(HexColor("#1F2937"))
+        c.setLineWidth(0.5)
+        c.roundRect(cx, cy, card_w, card_h, 2 * mm, stroke=1, fill=1)
+        # color side bar
+        c.setFillColor(col)
+        c.rect(cx, cy, 2 * mm, card_h, stroke=0, fill=1)
+        # number
+        c.setFillColor(col)
+        c.setFont("Helvetica-Bold", 22)
+        c.drawCentredString(cx + card_w / 2, cy + card_h - 12 * mm, str(cnt))
+        # label
+        c.setFillColor(HexColor("#CBD5E1"))
+        c.setFont("Helvetica-Bold", 8)
+        c.drawCentredString(cx + card_w / 2, cy + 4.5 * mm, lab)
+        c.setFillColor(HexColor("#64748B"))
+        c.setFont("Helvetica", 6.5)
+        c.drawCentredString(cx + card_w / 2, cy + 1.5 * mm, "LAPORAN")
+    cur_y -= card_h + 5 * mm
+
+    # --- Executive bullets (max 5, max 110 char) ---
+    bullets = _extract_brief_bullets(ai_text or "", max_bullets=5, max_chars=110)
+    bullets_h = 50 * mm
+    # Panel
+    c.setFillColor(HexColor("#FAFAF9"))
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(MARGIN, cur_y - bullets_h, w, bullets_h, stroke=1, fill=1)
+    # Title
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(MARGIN + 3 * mm, cur_y - 5 * mm, "RINGKASAN PIMPINAN")
+    c.setStrokeColor(HexColor("#FFD700"))
+    c.setLineWidth(1.4)
+    c.line(MARGIN + 3 * mm, cur_y - 6 * mm, MARGIN + 38 * mm, cur_y - 6 * mm)
+    # Bullets
+    by = cur_y - 11 * mm
+    if not bullets:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawString(MARGIN + 5 * mm, by, "Belum ada ringkasan dari AI.")
+    else:
+        for b in bullets:
+            c.setFillColor(HexColor("#F59E0B"))
+            c.circle(MARGIN + 5 * mm, by + 1 * mm, 1.0 * mm, stroke=0, fill=1)
+            c.setFillColor(HexColor("#1F2937"))
+            c.setFont("Helvetica", 9)
+            # wrap to 1 line
+            lines = wrap_to_width(b, "Helvetica", 9, w - 14 * mm)[:1]
+            c.drawString(MARGIN + 9 * mm, by, lines[0] if lines else b)
+            by -= 7 * mm
+    cur_y -= bullets_h + 5 * mm
+
+    # --- Trend chart (compact) ---
+    if cur_y - 75 * mm > avail_bottom:
+        trend_h = min(cur_y - avail_bottom - 4 * mm, 78 * mm)
+        _draw_sentiment_trend_chart(c, MARGIN, cur_y - trend_h, w, trend_h, data.get("medmon_trend") or {})
+
+    _draw_footer(c, 2, variant="morning")
+
+
+def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd):
+    """PAGE 3: All MEDMON pie charts (compact grid) + Top items LID/KONTRA/GAL."""
+    _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant="morning")
+
+    avail_top = PAGE_H - 18 * mm - 4 * mm
+    avail_bottom = 14 * mm + 5 * mm
+    w = PAGE_W - 2 * MARGIN
+    cur_y = avail_top
+
+    # --- Title bar ---
+    bar_h = 6 * mm
+    c.setFillColor(COLOR_HEADER)
+    c.rect(MARGIN, cur_y - bar_h, w, bar_h, stroke=0, fill=1)
+    c.setFillColor(HexColor("#FFD700"))
+    c.rect(MARGIN, cur_y - bar_h, 1.4 * mm, bar_h, stroke=0, fill=1)
+    c.setFillColor(white)
+    c.setFont("Helvetica-Bold", 9)
+    c.drawString(MARGIN + 3 * mm, cur_y - bar_h + 1.6 * mm, "INFOGRAFIS SENTIMEN & RESUME LAPANGAN")
+    cur_y -= bar_h + 4 * mm
+
+    # --- ALL pie charts compact grid ---
+    cases = []
+    for it in data.get("medmon", []):
+        if _has_sentiment(it):
+            cases.append({
+                "title": (it.get("subjek") or "-")[:30],
+                "p": it.get("sentiment_positif") or 0,
+                "n": it.get("sentiment_negatif") or 0,
+                "u": it.get("sentiment_netral") or 0,
+            })
+
+    # Section header
+    c.setFillColor(HexColor("#F1F5F9"))
+    c.rect(MARGIN, cur_y - 5 * mm, w, 5 * mm, stroke=0, fill=1)
+    c.setFillColor(COLOR_HEADER)
+    c.setFont("Helvetica-Bold", 8)
+    c.drawString(MARGIN + 2 * mm, cur_y - 5 * mm + 1.4 * mm,
+                 f"GRAFIK SENTIMEN — SEMUA SUBJEK ({len(cases)})")
+    cur_y -= 5 * mm + 2 * mm
+
+    # Grid: 4 columns compact
+    cols = 4
+    gutter = 2.5 * mm
+    cw = (w - (cols - 1) * gutter) / cols
+    ch_card = 36 * mm
+    # If too many to fit, shrink card height
+    rows_needed = (len(cases) + cols - 1) // cols if cases else 1
+    max_rows_avail = max(1, int((cur_y - avail_bottom - 60 * mm) // (ch_card + gutter)))
+    # Reserve ~60mm for resume list at bottom
+    if rows_needed > max_rows_avail:
+        # Cap rows; show top cases by sentiment intensity (positif+negatif)
+        cases = sorted(cases, key=lambda x: x["p"] + x["n"], reverse=True)[: max_rows_avail * cols]
+
+    if not cases:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 7)
+        c.drawString(MARGIN + 2 * mm, cur_y - 5 * mm, "Belum ada subjek dengan data sentimen.")
+        cur_y -= 8 * mm
+    else:
+        col = 0
+        row_y = cur_y
+        for case in cases:
+            cx = MARGIN + col * (cw + gutter)
+            cy = row_y - ch_card
+            # Card
+            c.setFillColor(white)
+            c.setStrokeColor(COLOR_BORDER)
+            c.setLineWidth(0.4)
+            c.roundRect(cx, cy, cw, ch_card, 1.5 * mm, stroke=1, fill=1)
+            # title
+            c.setFillColor(COLOR_HEADER)
+            c.setFont("Helvetica-Bold", 7)
+            c.drawString(cx + 1.5 * mm, cy + ch_card - 3.5 * mm, case["title"])
+            # pie
+            pie_r = min(cw / 2 - 4 * mm, 10 * mm)
+            draw_sentiment_pie(c, cx + cw / 2, cy + ch_card / 2 - 1 * mm, pie_r,
+                               case["p"], case["n"], case["u"])
+            # legend
+            c.setFont("Helvetica-Bold", 5.5)
+            c.setFillColor(COLOR_GREEN)
+            c.drawString(cx + 1.5 * mm, cy + 1.5 * mm, f"+{case['p']}%")
+            c.setFillColor(COLOR_RED)
+            c.drawCentredString(cx + cw / 2, cy + 1.5 * mm, f"-{case['n']}%")
+            c.setFillColor(HexColor("#71717A"))
+            c.drawRightString(cx + cw - 1.5 * mm, cy + 1.5 * mm, f"~{case['u']}%")
+            col += 1
+            if col >= cols:
+                col = 0
+                row_y -= ch_card + gutter
+        if col != 0:
+            row_y -= ch_card + gutter
+        cur_y = row_y - 2 * mm
+
+    # --- Resume Singkat: LID / KONTRA / GAL (top 3 each, 1 line) ---
+    def _short(it, keys, n=80):
+        for k in keys:
+            v = it.get(k)
+            if v:
+                s = str(v).strip()
+                return s if len(s) <= n else s[: n - 1] + "…"
+        return ""
+
+    sections = [
+        ("LID", data.get("lid", []), ("judul", "title"), HexColor("#F59E0B")),
+        ("KONTRA", data.get("kontra", []), ("subjek", "subject", "nama"), HexColor("#EF4444")),
+        ("GAL", data.get("gal", []), ("topik", "topic", "judul"), HexColor("#3B82F6")),
+    ]
+    # Compact panel — auto-size to ~45mm, NOT auto-fill to bottom
+    panel_h = 48 * mm
+    panel_top = cur_y
+    panel_bottom = panel_top - panel_h
+    # outer panel
+    c.setFillColor(HexColor("#FAFAF9"))
+    c.setStrokeColor(COLOR_BORDER)
+    c.setLineWidth(0.5)
+    c.rect(MARGIN, panel_bottom, w, panel_h, stroke=1, fill=1)
+    # 3 columns inside
+    col_w = (w - 4 * mm) / 3
+    for i, (lab, items, keys, color) in enumerate(sections):
+        cx = MARGIN + 1.5 * mm + i * col_w
+        # Column header
+        c.setFillColor(color)
+        c.rect(cx, panel_top - 5 * mm, col_w - 1 * mm, 5 * mm, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(cx + 1.5 * mm, panel_top - 5 * mm + 1.4 * mm, f"{lab}  ·  {len(items)}")
+        # Items (top 3)
+        item_y = panel_top - 5 * mm - 4 * mm
+        if not items:
+            c.setFillColor(COLOR_MUTED)
+            c.setFont("Helvetica-Oblique", 7)
+            c.drawString(cx + 1.5 * mm, item_y, "Tidak ada laporan.")
+        else:
+            for idx, it in enumerate(items[:3], 1):
+                t = _short(it, keys, n=70)
+                if not t:
+                    continue
+                c.setFillColor(color)
+                c.setFont("Helvetica-Bold", 7)
+                c.drawString(cx + 1.5 * mm, item_y, f"{idx}.")
+                c.setFillColor(HexColor("#1F2937"))
+                c.setFont("Helvetica", 7)
+                lines = wrap_to_width(t, "Helvetica", 7, col_w - 7 * mm)[:2]
+                ly = item_y
+                for ln in lines:
+                    c.drawString(cx + 4.5 * mm, ly, ln)
+                    ly -= 3 * mm
+                item_y = ly - 1.5 * mm
+
+    _draw_footer(c, 3, variant="morning")
+
+
 # ---------- PAPUA STATIC MAP (auto plotted from GEOINT coords) ----------
 # Render full Papua region at zoom 6 (same physical size as before).
 # Mask layer covers non-Indonesian areas so visually ONLY Tanah Papua tampil.
@@ -2645,9 +2918,17 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
 
     # =========== COVER PAGE (Morning variant only) ===========
     if variant == "morning":
+        # MORNING REPORT: fixed 3-page infographic layout
         _draw_morning_cover_page(c, rd, title_text=header_title)
         c.showPage()
-        state["page"] = 2  # next page after cover
+        # Page 2: Dashboard
+        _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd)
+        c.showPage()
+        # Page 3: Charts + Resume
+        _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
+        c.showPage()
+        c.save()
+        return buf.getvalue()
 
     # =========== PAGE 1: Executive Summary (FULL PAGE) ===========
     _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant=variant)
