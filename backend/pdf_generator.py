@@ -529,6 +529,34 @@ def _draw_brief_list(c, x, y_top, w, title, items, key_field="judul", count_text
     return cur_y - 2 * mm
 
 
+def _extract_summary_points(ai_text: str):
+    """Parse AI text into preamble + numbered points.
+    Returns dict(preamble:str, points:list[str]).
+    Expects format like:
+        '...preamble paragraph...
+         1. JAKARTA – ...: detail...
+         2. PAPUA: detail...'
+    """
+    import re
+    if not ai_text:
+        return {"preamble": "", "points": []}
+    m = re.search(r"(?ims)RINGKASAN\s*EKSEKUTIF\s*:?(.*?)(?=\n[A-Z]{4,}\s*:|\Z)", ai_text)
+    body = (m.group(1) if m else ai_text).strip()
+    body = re.sub(r"\r", "", body)
+    # Split into preamble + points. Points start with "1.", "2.", etc.
+    parts = re.split(r"(?m)^\s*(\d+)\.\s+", body)
+    # parts[0] = preamble, then [num1, content1, num2, content2, ...]
+    preamble = parts[0].strip() if parts else ""
+    points = []
+    for i in range(1, len(parts), 2):
+        if i + 1 < len(parts):
+            point = parts[i + 1].strip()
+            # Normalize whitespace inside
+            point = re.sub(r"\s+", " ", point)
+            points.append(point)
+    return {"preamble": preamble, "points": points}
+
+
 def _extract_narrative_paragraphs(ai_text: str, max_chars: int = 1400):
     """Pull narrative paragraphs from AI text (RINGKASAN EKSEKUTIF preferred).
     Returns plain text concatenated with newlines, suitable for paragraph wrap."""
@@ -642,9 +670,9 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
         c.drawCentredString(cx + card_w / 2, cy + 1.5 * mm, "LAPORAN")
     cur_y -= card_h + 5 * mm
 
-    # --- Executive narrative paragraph (auto-fills available height) ---
-    narrative = _extract_narrative_paragraphs(ai_text or "", max_chars=2200)
-    # Allocate space dynamically: leave ~78mm at bottom for trend chart
+    # --- Executive summary as numbered points (per point, not paragraph) ---
+    summary = _extract_summary_points(ai_text or "")
+    # Allocate space: leave ~78mm at bottom for trend chart
     panel_top_y = cur_y
     panel_bottom_y = avail_bottom + 78 * mm + 4 * mm
     panel_h = panel_top_y - panel_bottom_y
@@ -661,44 +689,68 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
     c.setLineWidth(1.4)
     c.line(MARGIN + 3 * mm, panel_top_y - 6 * mm, MARGIN + 38 * mm, panel_top_y - 6 * mm)
 
-    # Paragraph body — wrap inside frame
     body_x = MARGIN + 4 * mm
     body_y_top = panel_top_y - 10 * mm
     body_w = w - 8 * mm
     body_h = body_y_top - panel_bottom_y - 3 * mm
-    if narrative:
+
+    has_content = summary["preamble"] or summary["points"]
+    if has_content:
         try:
-            from reportlab.platypus import Paragraph, Frame
+            from reportlab.platypus import Paragraph, Frame, Spacer
             from reportlab.lib.styles import ParagraphStyle
             from reportlab.lib.enums import TA_JUSTIFY
-            style = ParagraphStyle(
-                "morning_body",
+            from xml.sax.saxutils import escape as _xml_escape
+
+            style_preamble = ParagraphStyle(
+                "morning_preamble",
+                fontName="Helvetica-Oblique",
+                fontSize=9,
+                leading=12.2,
+                textColor=HexColor("#1F2937"),
+                alignment=TA_JUSTIFY,
+                spaceAfter=4,
+            )
+            style_point = ParagraphStyle(
+                "morning_point",
                 fontName="Helvetica",
                 fontSize=9.2,
                 leading=12.6,
                 textColor=HexColor("#1F2937"),
                 alignment=TA_JUSTIFY,
+                leftIndent=10,
+                bulletIndent=0,
+                firstLineIndent=0,
+                spaceAfter=3,
             )
-            # Convert plain text to flowables (split on blank lines for paragraph breaks)
-            from xml.sax.saxutils import escape as _xml_escape
+
             flowables = []
-            for blk in narrative.split("\n\n"):
-                blk = blk.strip()
-                if not blk:
-                    continue
-                # Replace single newlines with space inside paragraphs
-                txt = " ".join(blk.splitlines())
-                flowables.append(Paragraph(_xml_escape(txt), style))
+            if summary["preamble"]:
+                preamble_text = " ".join(summary["preamble"].splitlines())
+                flowables.append(Paragraph(_xml_escape(preamble_text), style_preamble))
+                flowables.append(Spacer(1, 4))
+            for idx, pt in enumerate(summary["points"], 1):
+                bullet_html = (
+                    f'<font color="#F59E0B"><b>{idx}.</b></font>&nbsp;'
+                    f'{_xml_escape(pt)}'
+                )
+                flowables.append(Paragraph(bullet_html, style_point))
+
+            # If no points parsed, fall back to narrative paragraphs
+            if not summary["points"] and summary["preamble"]:
+                # Already added preamble as italic — also add as normal paragraph
+                pass
+
             frame = Frame(body_x, panel_bottom_y + 2 * mm, body_w, body_h,
                           leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
                           showBoundary=0)
             frame.addFromList(flowables, c)
         except Exception:
-            # Fallback simple drawString
+            # Fallback simple drawString of preamble only
             c.setFont("Helvetica", 9)
             c.setFillColor(HexColor("#1F2937"))
             y = body_y_top
-            for ln in wrap_to_width(narrative, "Helvetica", 9, body_w):
+            for ln in wrap_to_width(summary.get("preamble", ""), "Helvetica", 9, body_w):
                 if y < panel_bottom_y + 3 * mm:
                     break
                 c.drawString(body_x, y, ln)
@@ -757,12 +809,11 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                  f"GRAFIK SENTIMEN — SEMUA SUBJEK ({len(cases)})")
     cur_y -= 5 * mm + 2 * mm
 
-    # Grid: 4 columns compact
-    cols = 4
-    gutter = 2.5 * mm
+    # Grid: dynamic columns — 3 if 5 items (3 top + 2 bottom), else 4
+    cols = 3 if len(cases) == 5 else 4
+    gutter = 3 * mm
     cw = (w - (cols - 1) * gutter) / cols
-    ch_card = 28 * mm  # compact pie cards for morning layout
-    # If too many to fit, shrink card height
+    ch_card = 36 * mm if cols == 3 else 28 * mm
     rows_needed = (len(cases) + cols - 1) // cols if cases else 1
     # Reserve ~38mm resume + ~115mm cipta opini/peta section
     max_rows_avail = max(1, int((cur_y - avail_bottom - 155 * mm) // (ch_card + gutter)))
@@ -821,7 +872,7 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
 
     sections = [
         ("LID", data.get("lid", []), ("judul", "title"), HexColor("#F59E0B")),
-        ("KONTRA", data.get("kontra", []), ("subjek", "subject", "nama"), HexColor("#EF4444")),
+        ("KONTRA — PROFILING", data.get("kontra", []), ("nama_to", "nama", "subjek"), HexColor("#EF4444")),
         ("GAL", data.get("gal", []), ("topik", "topic", "judul"), HexColor("#3B82F6")),
     ]
     # Compact resume panel
@@ -900,32 +951,46 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
             img_cols = 2
             img_gutter = 2 * mm
             img_inner_w = (left_w - (img_cols + 1) * img_gutter) / img_cols
-            img_inner_h = 38 * mm
+            # Card height = image area + caption strip
+            caption_strip_h = 5 * mm
+            card_h_total = 36 * mm
+            img_inner_h = card_h_total - caption_strip_h
             img_x_start = MARGIN + img_gutter
-            img_y_start = sec_top - 5 * mm - img_gutter - img_inner_h
+            img_y_start = sec_top - 5 * mm - img_gutter - card_h_total
             for k, it in enumerate(gal_items[:4]):
                 col_i = k % img_cols
                 row_i = k // img_cols
                 ix = img_x_start + col_i * (img_inner_w + img_gutter)
-                iy = img_y_start - row_i * (img_inner_h + img_gutter)
+                iy = img_y_start - row_i * (card_h_total + img_gutter)
                 if iy < sec_bottom + 2 * mm:
                     break
-                # placeholder bg
+                # Image area (top portion)
+                img_y = iy + caption_strip_h
                 c.setFillColor(HexColor("#F1F5F9"))
-                c.rect(ix, iy, img_inner_w, img_inner_h, stroke=0, fill=1)
+                c.rect(ix, img_y, img_inner_w, img_inner_h, stroke=0, fill=1)
                 try:
                     img = decode_image(it.get("gambar"))
                     if img:
-                        fit_image(c, img, ix, iy, img_inner_w, img_inner_h)
+                        fit_image(c, img, ix, img_y, img_inner_w, img_inner_h)
                 except Exception:
                     pass
-                # caption
-                cap = (it.get("judul") or it.get("topik") or "")[:60]
+                # Caption strip (BELOW image, white bg, no overlap)
+                c.setFillColor(white)
+                c.rect(ix, iy, img_inner_w, caption_strip_h, stroke=0, fill=1)
+                # Truncate caption to FIT width — measure precisely
+                raw = (it.get("judul") or it.get("topik") or "").strip()
+                c.setFont("Helvetica-Bold", 6.5)
+                avail_text_w = img_inner_w - 1.6 * mm
+                from reportlab.pdfbase.pdfmetrics import stringWidth
+                cap = raw
+                while cap and stringWidth(cap, "Helvetica-Bold", 6.5) > avail_text_w:
+                    cap = cap[:-1]
+                if cap != raw and len(cap) > 1:
+                    cap = cap[:-1] + "…"
                 c.setFillColor(HexColor("#1F2937"))
-                c.setFont("Helvetica-Bold", 6)
-                c.drawString(ix + 0.8 * mm, iy + 0.8 * mm, cap)
+                c.drawString(ix + 0.8 * mm, iy + 1.5 * mm, cap)
 
-        # RIGHT: Peta OPM
+        # RIGHT: Peta OPM + Daftar Tokoh
         peta_x = MARGIN + left_w + 3 * mm
         c.setFillColor(HexColor("#065F46"))
         c.rect(peta_x, sec_top - 5 * mm, right_w, 5 * mm, stroke=0, fill=1)
@@ -935,18 +1000,28 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                      f"PETA POSISI OPM/KKB  ·  {len(geoint_items)} TITIK")
         c.setStrokeColor(COLOR_BORDER)
         c.rect(peta_x, sec_bottom, right_w, section_h - 5 * mm, stroke=1, fill=0)
+
+        # Inner split: peta on top (~70%), daftar tokoh on bottom (~30%)
+        inner_top = sec_top - 5 * mm
+        inner_bottom = sec_bottom
+        inner_h = inner_top - inner_bottom
+        list_h = 28 * mm
+        if inner_h < 60 * mm:
+            list_h = max(18 * mm, inner_h * 0.32)
+        map_top = inner_top
+        map_bottom = inner_bottom + list_h
+        map_h = map_top - map_bottom
+
         peta_map_img = None
-        # Prefer auto-generated Papua map (consistent with daily report)
         try:
             peta_map_img = render_papua_map(
                 geoint_items,
                 width_px=1200,
-                height_px=int(1200 * (section_h - 5 * mm) / max(1, right_w)),
+                height_px=max(400, int(1200 * map_h / max(1, right_w))),
                 draw_labels=True,
             )
         except Exception:
             peta_map_img = None
-        # Fallback to user-uploaded peta_image
         if peta_map_img is None:
             for it in geoint_items:
                 if it.get("peta_image"):
@@ -957,14 +1032,54 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                     except Exception:
                         pass
         if peta_map_img:
-            fit_image(c, peta_map_img, peta_x + 1 * mm, sec_bottom + 1 * mm,
-                      right_w - 2 * mm, section_h - 5 * mm - 2 * mm)
+            fit_image(c, peta_map_img, peta_x + 1 * mm, map_bottom + 1 * mm,
+                      right_w - 2 * mm, map_h - 2 * mm)
         else:
             c.setFillColor(COLOR_MUTED)
             c.setFont("Helvetica-Oblique", 7)
-            c.drawCentredString(peta_x + right_w / 2,
-                                sec_bottom + (section_h - 5 * mm) / 2,
+            c.drawCentredString(peta_x + right_w / 2, map_bottom + map_h / 2,
                                 "Peta tidak tersedia.")
+
+        # Separator
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.4)
+        c.line(peta_x + 1 * mm, map_bottom, peta_x + right_w - 1 * mm, map_bottom)
+
+        # Daftar Tokoh Terdeteksi (numbered list, max 6 — matches map markers)
+        c.setFillColor(COLOR_HEADER)
+        c.setFont("Helvetica-Bold", 7)
+        c.drawString(peta_x + 2 * mm, map_bottom - 4 * mm, "TOKOH/LOKASI TERDETEKSI:")
+        c.setFont("Helvetica", 6.5)
+        list_y = map_bottom - 7.5 * mm
+        list_cols = 2
+        list_col_w = (right_w - 4 * mm) / list_cols
+        items_to_show = geoint_items[:8]  # max 8 (2 cols × 4 rows)
+        for k, it in enumerate(items_to_show):
+            col_i = k % list_cols
+            row_i = k // list_cols
+            tx = peta_x + 2 * mm + col_i * list_col_w
+            ty = list_y - row_i * 3.2 * mm
+            if ty < inner_bottom + 1 * mm:
+                break
+            nama = (it.get("nama_orang") or it.get("nama") or it.get("wilayah") or "-").strip()
+            status = (it.get("status") or "").strip()
+            label = f"{k+1}. {nama}"
+            if status:
+                label += f" — {status}"
+            # Truncate to fit col_w
+            from reportlab.pdfbase.pdfmetrics import stringWidth
+            avail_lw = list_col_w - 2 * mm
+            while label and stringWidth(label, "Helvetica", 6.5) > avail_lw:
+                label = label[:-1]
+            if label and not label.endswith("…") and len(label) < len(f"{k+1}. {nama} — {status}"):
+                label = label[:-1] + "…"
+            c.setFillColor(HexColor("#DC2626"))
+            c.setFont("Helvetica-Bold", 6.5)
+            c.drawString(tx, ty, f"{k+1}.")
+            c.setFillColor(HexColor("#1F2937"))
+            c.setFont("Helvetica", 6.5)
+            rest = label[len(f"{k+1}."):].strip()
+            c.drawString(tx + 4 * mm, ty, rest)
 
     _draw_footer(c, 3, variant="morning")
 
