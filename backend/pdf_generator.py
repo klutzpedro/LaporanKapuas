@@ -529,6 +529,39 @@ def _draw_brief_list(c, x, y_top, w, title, items, key_field="judul", count_text
     return cur_y - 2 * mm
 
 
+def _extract_narrative_paragraphs(ai_text: str, max_chars: int = 1400):
+    """Pull narrative paragraphs from AI text (RINGKASAN EKSEKUTIF preferred).
+    Returns plain text concatenated with newlines, suitable for paragraph wrap."""
+    import re
+    if not ai_text:
+        return ""
+    m = re.search(r"(?ims)RINGKASAN\s*EKSEKUTIF\s*:?(.*?)(?=\n[A-Z]{4,}\s*:|\Z)", ai_text)
+    body = (m.group(1) if m else ai_text).strip()
+    # Normalize whitespace
+    body = re.sub(r"\r", "", body)
+    # Remove leading bullets
+    lines = []
+    for ln in body.splitlines():
+        ln = ln.strip()
+        if not ln:
+            lines.append("")
+            continue
+        ln = re.sub(r"^[\-•\*\d\.\)]+\s+", "", ln)
+        lines.append(ln)
+    body = "\n".join(lines).strip()
+    # Truncate at sentence boundary
+    if len(body) > max_chars:
+        cut = body[:max_chars]
+        # Try cut at last "." or "?" or "!"
+        for ch in [". ", "? ", "! ", ".\n"]:
+            idx = cut.rfind(ch)
+            if idx > max_chars * 0.6:
+                cut = cut[: idx + 1]
+                break
+        body = cut.rstrip() + "…"
+    return body
+
+
 def _extract_brief_bullets(ai_text: str, max_bullets: int = 5, max_chars: int = 110):
     """Pull short bullet points (≤max_chars each) from AI text, prefer RINGKASAN/REKOMENDASI."""
     import re
@@ -609,38 +642,72 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
         c.drawCentredString(cx + card_w / 2, cy + 1.5 * mm, "LAPORAN")
     cur_y -= card_h + 5 * mm
 
-    # --- Executive bullets (max 5, max 110 char) ---
-    bullets = _extract_brief_bullets(ai_text or "", max_bullets=5, max_chars=110)
-    bullets_h = 50 * mm
-    # Panel
+    # --- Executive narrative paragraph (auto-fills available height) ---
+    narrative = _extract_narrative_paragraphs(ai_text or "", max_chars=2200)
+    # Allocate space dynamically: leave ~78mm at bottom for trend chart
+    panel_top_y = cur_y
+    panel_bottom_y = avail_bottom + 78 * mm + 4 * mm
+    panel_h = panel_top_y - panel_bottom_y
+    # Panel background
     c.setFillColor(HexColor("#FAFAF9"))
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
-    c.rect(MARGIN, cur_y - bullets_h, w, bullets_h, stroke=1, fill=1)
+    c.rect(MARGIN, panel_bottom_y, w, panel_h, stroke=1, fill=1)
     # Title
     c.setFillColor(COLOR_HEADER)
     c.setFont("Helvetica-Bold", 9)
-    c.drawString(MARGIN + 3 * mm, cur_y - 5 * mm, "RINGKASAN PIMPINAN")
+    c.drawString(MARGIN + 3 * mm, panel_top_y - 5 * mm, "RINGKASAN PIMPINAN")
     c.setStrokeColor(HexColor("#FFD700"))
     c.setLineWidth(1.4)
-    c.line(MARGIN + 3 * mm, cur_y - 6 * mm, MARGIN + 38 * mm, cur_y - 6 * mm)
-    # Bullets
-    by = cur_y - 11 * mm
-    if not bullets:
-        c.setFillColor(COLOR_MUTED)
-        c.setFont("Helvetica-Oblique", 8)
-        c.drawString(MARGIN + 5 * mm, by, "Belum ada ringkasan dari AI.")
-    else:
-        for b in bullets:
-            c.setFillColor(HexColor("#F59E0B"))
-            c.circle(MARGIN + 5 * mm, by + 1 * mm, 1.0 * mm, stroke=0, fill=1)
-            c.setFillColor(HexColor("#1F2937"))
+    c.line(MARGIN + 3 * mm, panel_top_y - 6 * mm, MARGIN + 38 * mm, panel_top_y - 6 * mm)
+
+    # Paragraph body — wrap inside frame
+    body_x = MARGIN + 4 * mm
+    body_y_top = panel_top_y - 10 * mm
+    body_w = w - 8 * mm
+    body_h = body_y_top - panel_bottom_y - 3 * mm
+    if narrative:
+        try:
+            from reportlab.platypus import Paragraph, Frame
+            from reportlab.lib.styles import ParagraphStyle
+            from reportlab.lib.enums import TA_JUSTIFY
+            style = ParagraphStyle(
+                "morning_body",
+                fontName="Helvetica",
+                fontSize=9.2,
+                leading=12.6,
+                textColor=HexColor("#1F2937"),
+                alignment=TA_JUSTIFY,
+            )
+            # Convert plain text to flowables (split on blank lines for paragraph breaks)
+            from xml.sax.saxutils import escape as _xml_escape
+            flowables = []
+            for blk in narrative.split("\n\n"):
+                blk = blk.strip()
+                if not blk:
+                    continue
+                # Replace single newlines with space inside paragraphs
+                txt = " ".join(blk.splitlines())
+                flowables.append(Paragraph(_xml_escape(txt), style))
+            frame = Frame(body_x, panel_bottom_y + 2 * mm, body_w, body_h,
+                          leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
+                          showBoundary=0)
+            frame.addFromList(flowables, c)
+        except Exception:
+            # Fallback simple drawString
             c.setFont("Helvetica", 9)
-            # wrap to 1 line
-            lines = wrap_to_width(b, "Helvetica", 9, w - 14 * mm)[:1]
-            c.drawString(MARGIN + 9 * mm, by, lines[0] if lines else b)
-            by -= 7 * mm
-    cur_y -= bullets_h + 5 * mm
+            c.setFillColor(HexColor("#1F2937"))
+            y = body_y_top
+            for ln in wrap_to_width(narrative, "Helvetica", 9, body_w):
+                if y < panel_bottom_y + 3 * mm:
+                    break
+                c.drawString(body_x, y, ln)
+                y -= 4 * mm
+    else:
+        c.setFillColor(COLOR_MUTED)
+        c.setFont("Helvetica-Oblique", 9)
+        c.drawString(body_x, body_y_top, "Belum ada ringkasan dari AI.")
+    cur_y = panel_bottom_y - 4 * mm
 
     # --- Trend chart (compact) ---
     if cur_y - 75 * mm > avail_bottom:
@@ -694,11 +761,11 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
     cols = 4
     gutter = 2.5 * mm
     cw = (w - (cols - 1) * gutter) / cols
-    ch_card = 36 * mm
+    ch_card = 28 * mm  # compact pie cards for morning layout
     # If too many to fit, shrink card height
     rows_needed = (len(cases) + cols - 1) // cols if cases else 1
-    max_rows_avail = max(1, int((cur_y - avail_bottom - 60 * mm) // (ch_card + gutter)))
-    # Reserve ~60mm for resume list at bottom
+    # Reserve ~38mm resume + ~115mm cipta opini/peta section
+    max_rows_avail = max(1, int((cur_y - avail_bottom - 155 * mm) // (ch_card + gutter)))
     if rows_needed > max_rows_avail:
         # Cap rows; show top cases by sentiment intensity (positif+negatif)
         cases = sorted(cases, key=lambda x: x["p"] + x["n"], reverse=True)[: max_rows_avail * cols]
@@ -757,8 +824,8 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         ("KONTRA", data.get("kontra", []), ("subjek", "subject", "nama"), HexColor("#EF4444")),
         ("GAL", data.get("gal", []), ("topik", "topic", "judul"), HexColor("#3B82F6")),
     ]
-    # Compact panel — auto-size to ~45mm, NOT auto-fill to bottom
-    panel_h = 48 * mm
+    # Compact resume panel
+    panel_h = 38 * mm
     panel_top = cur_y
     panel_bottom = panel_top - panel_h
     # outer panel
@@ -766,7 +833,6 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
     c.setStrokeColor(COLOR_BORDER)
     c.setLineWidth(0.5)
     c.rect(MARGIN, panel_bottom, w, panel_h, stroke=1, fill=1)
-    # 3 columns inside
     col_w = (w - 4 * mm) / 3
     for i, (lab, items, keys, color) in enumerate(sections):
         cx = MARGIN + 1.5 * mm + i * col_w
@@ -798,6 +864,107 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                     c.drawString(cx + 4.5 * mm, ly, ln)
                     ly -= 3 * mm
                 item_y = ly - 1.5 * mm
+
+    cur_y = panel_bottom - 4 * mm
+
+    # --- CIPTA OPINI (GAL images) + PETA OPM (GEOINT) ---
+    gal_items = [it for it in data.get("gal", []) if it.get("gambar")]
+    geoint_items = data.get("geoint", [])
+
+    # Available space below resume panel
+    bottom_space = cur_y - avail_bottom
+    if bottom_space > 30 * mm:
+        # Split horizontally: left = cipta opini grid, right = peta OPM
+        section_h = min(bottom_space - 2 * mm, 110 * mm)
+        sec_top = cur_y
+        sec_bottom = sec_top - section_h
+        left_w = w * 0.42
+        right_w = w - left_w - 3 * mm
+        # LEFT: Cipta Opini
+        c.setFillColor(HexColor("#1E40AF"))
+        c.rect(MARGIN, sec_top - 5 * mm, left_w, 5 * mm, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(MARGIN + 1.5 * mm, sec_top - 5 * mm + 1.4 * mm,
+                     f"CIPTA OPINI  ·  {len(gal_items)} KONTEN")
+        # Grid 2 columns inside left
+        c.setStrokeColor(COLOR_BORDER)
+        c.setLineWidth(0.4)
+        c.rect(MARGIN, sec_bottom, left_w, section_h - 5 * mm, stroke=1, fill=0)
+        if not gal_items:
+            c.setFillColor(COLOR_MUTED)
+            c.setFont("Helvetica-Oblique", 7)
+            c.drawCentredString(MARGIN + left_w / 2, sec_bottom + section_h / 2 - 3 * mm,
+                                "Belum ada gambar Cipta Opini.")
+        else:
+            img_cols = 2
+            img_gutter = 2 * mm
+            img_inner_w = (left_w - (img_cols + 1) * img_gutter) / img_cols
+            img_inner_h = 38 * mm
+            img_x_start = MARGIN + img_gutter
+            img_y_start = sec_top - 5 * mm - img_gutter - img_inner_h
+            for k, it in enumerate(gal_items[:4]):
+                col_i = k % img_cols
+                row_i = k // img_cols
+                ix = img_x_start + col_i * (img_inner_w + img_gutter)
+                iy = img_y_start - row_i * (img_inner_h + img_gutter)
+                if iy < sec_bottom + 2 * mm:
+                    break
+                # placeholder bg
+                c.setFillColor(HexColor("#F1F5F9"))
+                c.rect(ix, iy, img_inner_w, img_inner_h, stroke=0, fill=1)
+                try:
+                    img = decode_image(it.get("gambar"))
+                    if img:
+                        fit_image(c, img, ix, iy, img_inner_w, img_inner_h)
+                except Exception:
+                    pass
+                # caption
+                cap = (it.get("judul") or it.get("topik") or "")[:60]
+                c.setFillColor(HexColor("#1F2937"))
+                c.setFont("Helvetica-Bold", 6)
+                c.drawString(ix + 0.8 * mm, iy + 0.8 * mm, cap)
+
+        # RIGHT: Peta OPM
+        peta_x = MARGIN + left_w + 3 * mm
+        c.setFillColor(HexColor("#065F46"))
+        c.rect(peta_x, sec_top - 5 * mm, right_w, 5 * mm, stroke=0, fill=1)
+        c.setFillColor(white)
+        c.setFont("Helvetica-Bold", 8)
+        c.drawString(peta_x + 1.5 * mm, sec_top - 5 * mm + 1.4 * mm,
+                     f"PETA POSISI OPM/KKB  ·  {len(geoint_items)} TITIK")
+        c.setStrokeColor(COLOR_BORDER)
+        c.rect(peta_x, sec_bottom, right_w, section_h - 5 * mm, stroke=1, fill=0)
+        peta_map_img = None
+        # Prefer auto-generated Papua map (consistent with daily report)
+        try:
+            peta_map_img = render_papua_map(
+                geoint_items,
+                width_px=1200,
+                height_px=int(1200 * (section_h - 5 * mm) / max(1, right_w)),
+                draw_labels=True,
+            )
+        except Exception:
+            peta_map_img = None
+        # Fallback to user-uploaded peta_image
+        if peta_map_img is None:
+            for it in geoint_items:
+                if it.get("peta_image"):
+                    try:
+                        peta_map_img = decode_image(it["peta_image"])
+                        if peta_map_img:
+                            break
+                    except Exception:
+                        pass
+        if peta_map_img:
+            fit_image(c, peta_map_img, peta_x + 1 * mm, sec_bottom + 1 * mm,
+                      right_w - 2 * mm, section_h - 5 * mm - 2 * mm)
+        else:
+            c.setFillColor(COLOR_MUTED)
+            c.setFont("Helvetica-Oblique", 7)
+            c.drawCentredString(peta_x + right_w / 2,
+                                sec_bottom + (section_h - 5 * mm) / 2,
+                                "Peta tidak tersedia.")
 
     _draw_footer(c, 3, variant="morning")
 
