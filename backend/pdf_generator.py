@@ -1070,11 +1070,16 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         map_h = map_top - map_bottom
 
         peta_map_img = None
+        # Render with EXACT target aspect ratio so map fills whole box
+        target_w_pt = right_w - 0.6 * mm
+        target_h_pt = map_h - 0.6 * mm
         try:
+            target_w_px = 1400
+            target_h_px = max(400, int(target_w_px * target_h_pt / max(1, target_w_pt)))
             peta_map_img = render_papua_map(
                 geoint_items,
-                width_px=1200,
-                height_px=max(400, int(1200 * map_h / max(1, right_w))),
+                width_px=target_w_px,
+                height_px=target_h_px,
                 draw_labels=True,
             )
         except Exception:
@@ -1089,8 +1094,18 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                     except Exception:
                         pass
         if peta_map_img:
-            fit_image(c, peta_map_img, peta_x + 1 * mm, map_bottom + 1 * mm,
-                      right_w - 2 * mm, map_h - 2 * mm)
+            # Draw stretched to fill box (no centering padding)
+            try:
+                c.drawImage(
+                    peta_map_img,
+                    peta_x + 0.3 * mm, map_bottom + 0.3 * mm,
+                    width=target_w_pt, height=target_h_pt,
+                    mask="auto",
+                    preserveAspectRatio=False,
+                )
+            except Exception:
+                fit_image(c, peta_map_img, peta_x + 0.3 * mm, map_bottom + 0.3 * mm,
+                          target_w_pt, target_h_pt)
         else:
             c.setFillColor(COLOR_MUTED)
             c.setFont("Helvetica-Oblique", 7)
