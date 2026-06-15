@@ -990,12 +990,13 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
             img_cols = 2
             img_gutter = 2 * mm
             img_inner_w = (left_w - (img_cols + 1) * img_gutter) / img_cols
-            # Card height = image area + caption strip
-            caption_strip_h = 5 * mm
-            card_h_total = 36 * mm
+            # Caption area now fits 2 wrapped lines
+            caption_strip_h = 8 * mm
+            card_h_total = 42 * mm
             img_inner_h = card_h_total - caption_strip_h
             img_x_start = MARGIN + img_gutter
             img_y_start = sec_top - 5 * mm - img_gutter - card_h_total
+            from reportlab.pdfbase.pdfmetrics import stringWidth
             for k, it in enumerate(gal_items[:4]):
                 col_i = k % img_cols
                 row_i = k // img_cols
@@ -1013,21 +1014,28 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
                         fit_image(c, img, ix, img_y, img_inner_w, img_inner_h)
                 except Exception:
                     pass
-                # Caption strip (BELOW image, white bg, no overlap)
+                # Caption strip (below image, white bg)
                 c.setFillColor(white)
                 c.rect(ix, iy, img_inner_w, caption_strip_h, stroke=0, fill=1)
-                # Truncate caption to FIT width — measure precisely
+                # Wrap caption to fit 2 lines
                 raw = (it.get("judul") or it.get("topik") or "").strip()
-                c.setFont("Helvetica-Bold", 6.5)
                 avail_text_w = img_inner_w - 1.6 * mm
-                from reportlab.pdfbase.pdfmetrics import stringWidth
-                cap = raw
-                while cap and stringWidth(cap, "Helvetica-Bold", 6.5) > avail_text_w:
-                    cap = cap[:-1]
-                if cap != raw and len(cap) > 1:
-                    cap = cap[:-1] + "…"
+                lines = wrap_to_width(raw, "Helvetica-Bold", 6.5, avail_text_w)
+                # Limit to 2 lines, ellipsize last if longer
+                if len(lines) > 2:
+                    ln2 = lines[1]
+                    rest = " ".join(lines[2:])
+                    # Add ellipsis on line 2 within width
+                    candidate = ln2 + " " + rest
+                    while candidate and stringWidth(candidate + "…", "Helvetica-Bold", 6.5) > avail_text_w:
+                        candidate = candidate[:-1]
+                    lines = [lines[0], candidate.rstrip() + "…"]
                 c.setFillColor(HexColor("#1F2937"))
-                c.drawString(ix + 0.8 * mm, iy + 1.5 * mm, cap)
+                c.setFont("Helvetica-Bold", 6.5)
+                ty = iy + caption_strip_h - 2.5 * mm
+                for ln in lines[:2]:
+                    c.drawString(ix + 0.8 * mm, ty, ln)
+                    ty -= 3 * mm
 
         # RIGHT: Peta OPM + Daftar Tokoh
         peta_x = MARGIN + left_w + 3 * mm
