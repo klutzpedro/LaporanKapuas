@@ -612,7 +612,7 @@ def _extract_brief_bullets(ai_text: str, max_bullets: int = 5, max_chars: int = 
     return out
 
 
-def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd):
+def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd, ai_html=None):
     """PAGE 2: Dashboard infografis — KPI strip + executive bullets + trend chart."""
     _draw_header(c, rd, title_override=header_title, subtitle_override=header_subtitle, variant="morning")
 
@@ -670,7 +670,7 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
         c.drawCentredString(cx + card_w / 2, cy + 1.5 * mm, "LAPORAN")
     cur_y -= card_h + 5 * mm
 
-    # --- Executive summary as numbered points (per point, not paragraph) ---
+    # --- Executive summary: prioritize ai_html, fallback to numbered points, fallback to raw text ---
     summary = _extract_summary_points(ai_text or "")
     # Allocate space: leave ~78mm at bottom for trend chart
     panel_top_y = cur_y
@@ -694,13 +694,18 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
     body_w = w - 8 * mm
     body_h = body_y_top - panel_bottom_y - 3 * mm
 
-    has_content = summary["preamble"] or summary["points"]
-    if has_content:
+    has_html = bool(ai_html and ai_html.strip())
+    has_points = bool(summary["points"])
+    has_preamble = bool(summary["preamble"])
+    has_raw = bool(ai_text and ai_text.strip())
+
+    if has_html or has_points or has_preamble or has_raw:
         try:
             from reportlab.platypus import Paragraph, Frame, Spacer
             from reportlab.lib.styles import ParagraphStyle
             from reportlab.lib.enums import TA_JUSTIFY
             from xml.sax.saxutils import escape as _xml_escape
+            import re as _re
 
             style_preamble = ParagraphStyle(
                 "morning_preamble",
@@ -723,34 +728,68 @@ def _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle
                 firstLineIndent=0,
                 spaceAfter=3,
             )
+            style_html = ParagraphStyle(
+                "morning_html",
+                fontName="Helvetica",
+                fontSize=9.2,
+                leading=12.6,
+                textColor=HexColor("#1F2937"),
+                alignment=TA_JUSTIFY,
+                spaceAfter=4,
+            )
 
             flowables = []
-            if summary["preamble"]:
-                preamble_text = " ".join(summary["preamble"].splitlines())
-                flowables.append(Paragraph(_xml_escape(preamble_text), style_preamble))
-                flowables.append(Spacer(1, 4))
-            for idx, pt in enumerate(summary["points"], 1):
-                bullet_html = (
-                    f'<font color="#F59E0B"><b>{idx}.</b></font>&nbsp;'
-                    f'{_xml_escape(pt)}'
-                )
-                flowables.append(Paragraph(bullet_html, style_point))
 
-            # If no points parsed, fall back to narrative paragraphs
-            if not summary["points"] and summary["preamble"]:
-                # Already added preamble as italic — also add as normal paragraph
-                pass
+            if has_html:
+                # User has edited via RTE → render HTML directly.
+                # Strip dangerous/unsupported tags and split by block-level.
+                # ReportLab Paragraph supports <b><i><u><br/><font><a> — strip others.
+                html = ai_html
+                # Remove style attrs and unknown tags
+                html = _re.sub(r"<style[^>]*>.*?</style>", "", html, flags=_re.S | _re.I)
+                html = _re.sub(r"<script[^>]*>.*?</script>", "", html, flags=_re.S | _re.I)
+                # Normalize block tags to splitter
+                html = _re.sub(r"<\s*/?\s*(h[1-6]|p|div|li|ul|ol|blockquote)[^>]*>",
+                               "\x01BLOCK\x01", html, flags=_re.I)
+                html = _re.sub(r"<\s*br\s*/?\s*>", "\n", html, flags=_re.I)
+                # Strip remaining unsupported tags
+                html = _re.sub(r"<(?!/?(b|i|u|br|font|a)\b)[^>]+>", "", html, flags=_re.I)
+                blocks = [b.strip() for b in html.split("\x01BLOCK\x01") if b.strip()]
+                for blk in blocks:
+                    blk = blk.replace("\n", "<br/>")
+                    if not _re.sub(r"<[^>]+>", "", blk).strip():
+                        continue
+                    flowables.append(Paragraph(blk, style_html))
+            elif has_points or has_preamble:
+                if has_preamble:
+                    preamble_text = " ".join(summary["preamble"].splitlines())
+                    flowables.append(Paragraph(_xml_escape(preamble_text), style_preamble))
+                    flowables.append(Spacer(1, 4))
+                for idx, pt in enumerate(summary["points"], 1):
+                    bullet_html = (
+                        f'<font color="#F59E0B"><b>{idx}.</b></font>&nbsp;'
+                        f'{_xml_escape(pt)}'
+                    )
+                    flowables.append(Paragraph(bullet_html, style_point))
+            else:
+                # Raw text fallback — render as single paragraph (or split by blank lines)
+                blocks = [b.strip() for b in (ai_text or "").split("\n\n") if b.strip()]
+                if not blocks:
+                    blocks = [(ai_text or "").strip()]
+                for blk in blocks:
+                    txt = " ".join(blk.splitlines())
+                    flowables.append(Paragraph(_xml_escape(txt), style_html))
 
             frame = Frame(body_x, panel_bottom_y + 2 * mm, body_w, body_h,
                           leftPadding=0, rightPadding=0, topPadding=0, bottomPadding=0,
                           showBoundary=0)
             frame.addFromList(flowables, c)
         except Exception:
-            # Fallback simple drawString of preamble only
             c.setFont("Helvetica", 9)
             c.setFillColor(HexColor("#1F2937"))
             y = body_y_top
-            for ln in wrap_to_width(summary.get("preamble", ""), "Helvetica", 9, body_w):
+            raw = (ai_text or summary.get("preamble") or "")
+            for ln in wrap_to_width(raw, "Helvetica", 9, body_w):
                 if y < panel_bottom_y + 3 * mm:
                     break
                 c.drawString(body_x, y, ln)
@@ -3204,7 +3243,7 @@ def build_summary_pdf(data, ai_text, ai_html=None, header_title=None, header_sub
         _draw_morning_cover_page(c, rd, title_text=header_title)
         c.showPage()
         # Page 2: Dashboard
-        _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd)
+        _draw_morning_dashboard_page(c, data, ai_text, header_title, header_subtitle, rd, ai_html=ai_html)
         c.showPage()
         # Page 3: Charts + Resume
         _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
