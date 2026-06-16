@@ -1058,13 +1058,22 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         c.setStrokeColor(COLOR_BORDER)
         c.rect(peta_x, sec_bottom, right_w, section_h - 5 * mm, stroke=1, fill=0)
 
-        # Inner split: peta on top (~70%), daftar tokoh on bottom (~30%)
+        # Inner split: peta on top, daftar tokoh on bottom (auto-size based on item count)
         inner_top = sec_top - 5 * mm
         inner_bottom = sec_bottom
         inner_h = inner_top - inner_bottom
-        list_h = 28 * mm
-        if inner_h < 60 * mm:
-            list_h = max(18 * mm, inner_h * 0.32)
+        n_geoint = len(geoint_items)
+        if n_geoint <= 6:
+            cols_hint = 2
+            base_list_h = 22 * mm
+        elif n_geoint <= 12:
+            cols_hint = 3
+            base_list_h = 28 * mm
+        else:
+            cols_hint = 4
+            base_list_h = 32 * mm
+        rows_est = (n_geoint + cols_hint - 1) // cols_hint
+        list_h = min(max(base_list_h, rows_est * 3.2 * mm + 7 * mm), inner_h * 0.5)
         map_top = inner_top
         map_bottom = inner_bottom + list_h
         map_h = map_top - map_bottom
@@ -1117,41 +1126,50 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         c.setLineWidth(0.4)
         c.line(peta_x + 1 * mm, map_bottom, peta_x + right_w - 1 * mm, map_bottom)
 
-        # Daftar Tokoh Terdeteksi (numbered list, max 6 — matches map markers)
+        # Daftar Tokoh Terdeteksi (numbered list — show ALL items, auto multi-col)
         c.setFillColor(COLOR_HEADER)
         c.setFont("Helvetica-Bold", 7)
         c.drawString(peta_x + 2 * mm, map_bottom - 4 * mm, "TOKOH/LOKASI TERDETEKSI:")
-        c.setFont("Helvetica", 6.5)
         list_y = map_bottom - 7.5 * mm
-        list_cols = 2
+        n_items = len(geoint_items)
+        # Choose column count based on item count
+        if n_items <= 6:
+            list_cols = 2
+        elif n_items <= 12:
+            list_cols = 3
+        else:
+            list_cols = 4
         list_col_w = (right_w - 4 * mm) / list_cols
-        items_to_show = geoint_items[:8]  # max 8 (2 cols × 4 rows)
+        # Choose font size to ensure fit
+        list_font_size = 6.5 if list_cols <= 3 else 5.8
+        row_step = 3.0 * mm if list_font_size >= 6 else 2.6 * mm
+        items_to_show = geoint_items  # show ALL
+        from reportlab.pdfbase.pdfmetrics import stringWidth as _sw
         for k, it in enumerate(items_to_show):
             col_i = k % list_cols
             row_i = k // list_cols
             tx = peta_x + 2 * mm + col_i * list_col_w
-            ty = list_y - row_i * 3.2 * mm
+            ty = list_y - row_i * row_step
             if ty < inner_bottom + 1 * mm:
                 break
             nama = (it.get("nama_orang") or it.get("nama") or it.get("wilayah") or "-").strip()
             status = (it.get("status") or "").strip()
-            label = f"{k+1}. {nama}"
-            if status:
-                label += f" — {status}"
-            # Truncate to fit col_w
-            from reportlab.pdfbase.pdfmetrics import stringWidth
-            avail_lw = list_col_w - 2 * mm
-            while label and stringWidth(label, "Helvetica", 6.5) > avail_lw:
-                label = label[:-1]
-            if label and not label.endswith("…") and len(label) < len(f"{k+1}. {nama} — {status}"):
-                label = label[:-1] + "…"
+            avail_lw = list_col_w - 5 * mm
+            # Build "NAMA — STATUS" then truncate name if too long (keep status visible)
+            tail = f" — {status}" if status else ""
+            tail_w = _sw(tail, "Helvetica", list_font_size)
+            name_w_budget = max(10, avail_lw - tail_w)
+            shown_name = nama
+            while shown_name and _sw(shown_name, "Helvetica", list_font_size) > name_w_budget:
+                shown_name = shown_name[:-1]
+            if shown_name != nama and len(shown_name) > 1:
+                shown_name = shown_name[:-1] + "…"
             c.setFillColor(HexColor("#DC2626"))
-            c.setFont("Helvetica-Bold", 6.5)
+            c.setFont("Helvetica-Bold", list_font_size)
             c.drawString(tx, ty, f"{k+1}.")
             c.setFillColor(HexColor("#1F2937"))
-            c.setFont("Helvetica", 6.5)
-            rest = label[len(f"{k+1}."):].strip()
-            c.drawString(tx + 4 * mm, ty, rest)
+            c.setFont("Helvetica", list_font_size)
+            c.drawString(tx + 4 * mm, ty, shown_name + tail)
 
     _draw_footer(c, 3, variant="morning")
 
