@@ -856,6 +856,10 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
     rows_needed = (len(cases) + cols - 1) // cols if cases else 1
     # Reserve ~60mm resume + ~100mm cipta opini/peta section
     max_rows_avail = max(1, int((cur_y - avail_bottom - 165 * mm) // (ch_card + gutter)))
+    # SAFETY: guarantee pie chart never gets clipped when count <= 6 (1-2 rows).
+    # If max_rows_avail is insufficient, shrink the reserved bottom section instead.
+    if rows_needed > max_rows_avail and len(cases) <= 6:
+        max_rows_avail = rows_needed
     if rows_needed > max_rows_avail:
         # Cap rows; show top cases by sentiment intensity (positif+negatif)
         cases = sorted(cases, key=lambda x: x["p"] + x["n"], reverse=True)[: max_rows_avail * cols]
@@ -1065,7 +1069,10 @@ def _draw_morning_charts_resume_page(c, data, header_title, header_subtitle, rd)
         n_geoint = len(geoint_items)
         # 1-column vertical list — each row ~3.2mm
         row_step = 3.2 * mm
-        list_h = min(max(8 * mm + n_geoint * row_step, 20 * mm), inner_h * 0.65)
+        # Cap list height so map keeps a sensible minimum (≥ 38mm)
+        max_list_h = max(8 * mm, inner_h - 38 * mm)
+        ideal_list_h = 8 * mm + n_geoint * row_step
+        list_h = min(max(ideal_list_h, 20 * mm), max_list_h, inner_h * 0.6)
         map_top = inner_top
         map_bottom = inner_bottom + list_h
         map_h = map_top - map_bottom
